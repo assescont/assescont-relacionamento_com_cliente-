@@ -1,0 +1,22 @@
+# Dependências
+node_modules/
+
+# Build
+dist/
+
+# Variáveis de ambiente (segredos — nunca versionar)
+.env
+.env.local
+.env.*.local
+
+# Supabase CLI
+supabase/.temp/
+supabase/.branches/
+
+# Logs / SO
+*.log
+.DS_Store
+Thumbs.db
+
+# Config local da ferramenta (Claude Code)
+.claude/
