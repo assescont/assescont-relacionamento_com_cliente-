@@ -30,11 +30,16 @@
 
   /* ---------------- Gravação (debounce) ---------------- */
   var _timer = null, _last = null, _sending = false, _again = false;
+  // Só grava no banco depois que a carga inicial (login + loadBlob) terminar.
+  // Isso evita que gravações feitas durante o carregamento da página (ex.: a
+  // limpeza de órfãos, que chama persist()) sobrescrevam o banco com o cache local.
+  var _ready = false;
 
   function scheduleSave() { if (_timer) clearTimeout(_timer); _timer = setTimeout(saveNow, 700); }
 
   async function saveNow() {
     _timer = null;
+    if (!_ready) return;                 // ainda carregando: não grava no banco
     if (_sending) { _again = true; return; }
     _sending = true;
     try {
@@ -76,6 +81,7 @@
     var nomeExibicao = (user && (user.nome || user.email)) || 'usuário';
     try {
       var blob = await loadBlob();
+      _ready = true;                     // banco carregado: gravações liberadas
       if (blob) {
         applyBlob(blob);
       } else {
