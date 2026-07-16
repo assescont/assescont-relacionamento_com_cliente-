@@ -2842,6 +2842,44 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     });
   }
 
+  /* Espelha um novo cliente no Comercial: cria uma proposta vinculada,
+     preenchida com todos os campos que o Comercial aproveita do cliente.
+     Não duplica se já houver proposta para esse cliente / CNPJ. */
+  function espelharClienteEmComercial(cliente){
+    if(!cliente || !cliente.id) return;
+    const digits = onlyDigits(cliente.cnpj);
+    const jaExiste = DATA.comercial.some(c =>
+      c.clienteId===cliente.id || (digits && onlyDigits(c.cnpj)===digits));
+    if(jaExiste) return;
+
+    const maxNum = DATA.comercial.reduce((m,r)=>Math.max(m, parseInt(r._numeroProposta,10)||0), 2000);
+    const numero = maxNum + 1;
+    const registro = {
+      id: 'r'+Date.now()+Math.random().toString(16).slice(2),
+      clienteId: cliente.id,
+      _numeroProposta: numero,
+      numeroProposta: '#'+numero,
+      cnpj: cliente.cnpj || '',
+      razaoSocial: cliente.razaoSocial || '',
+      grupo: cliente.grupo || '',
+      regimeTributario: cliente.regime || '',
+      funcionarios: cliente.funcionarios || '',
+      sistemaFinanceiro: cliente.sistemaFinanceiro || '',
+      competenciaEntrada: cliente.competenciaEntrada || ''
+    };
+    DATA.comercial.push(registro);
+
+    // Gera a proposta (PDF/Word) como no fluxo normal do Comercial, quando possível.
+    try{ const pdf = gerarPdfProposta(registro); if(pdf) registro.propostaPdf = pdf; }catch(e){}
+    if(registro.regimeTributario){
+      try{
+        gerarDocxProposta(registro).then(arquivo=>{
+          if(arquivo){ registro.propostaDocx = arquivo; persist(); if(currentView==='comercial') renderTable('comercial'); }
+        });
+      }catch(e){}
+    }
+  }
+
   function gerarTextoProposta(record){
     const cliente = getCliente(record.clienteId);
     const nomeCliente = cliente ? cliente.razaoSocial : (record.razaoSocial || '');
@@ -3113,6 +3151,13 @@ Equipe Assescont`;
       linkClienteComercialSeExistir(record);
     }
     if(!editingId) DATA[editingSection].push(record);
+
+    // Espelhamento: todo novo cliente é refletido onde ele é necessário no sistema
+    // (Onboarding + proposta no Comercial com os campos em comum).
+    if(editingSection==='clientes' && isNew){
+      criarOnbSeNaoExistir(record.id, 'Criado automaticamente ao cadastrar o cliente.');
+      espelharClienteEmComercial(record);
+    }
 
     if(editingSection==='comercial' && record.statusProposta==='Aceita'){
       if(!record.dataGanho) record.dataGanho = new Date().toISOString().slice(0,10);
