@@ -34,7 +34,7 @@ create or replace function public.verify_login(p_email text, p_senha text)
 returns table (id uuid, email text, nome text)
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select u.id, u.email, u.nome
   from public."user" u
@@ -52,7 +52,7 @@ create or replace function public.set_user(p_email text, p_senha text, p_nome te
 returns void
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   insert into public."user"(email, senha_hash, nome)
   values (lower(p_email), crypt(p_senha, gen_salt('bf')), p_nome)
