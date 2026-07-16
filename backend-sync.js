@@ -17,8 +17,8 @@
   /* ===== Configuração do SEU projeto Supabase (novo e dedicado) =====
      Painel do Supabase > Project Settings > API.
      A "anon key" é pública por design. NUNCA use aqui a "service_role key". */
-  var SUPABASE_URL      = 'https://SEU-PROJETO.supabase.co';
-  var SUPABASE_ANON_KEY = 'COLE_AQUI_SUA_ANON_KEY';
+  var SUPABASE_URL      = 'https://ptinbolxxnphpsodlnyd.supabase.co';
+  var SUPABASE_ANON_KEY = 'sb_publishable_rUF9NhYZZZfxqvY5Gaht9A_79CDHO7L';
 
   var CRM_KEY  = 'assescont_crm_data_v2';   // a mesma chave que o app já usa
   var STATE_ID = 'default';                 // um estado único compartilhado
