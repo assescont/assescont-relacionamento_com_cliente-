@@ -1,17 +1,14 @@
 /* ============================================================================
- * backend-sync.js — Back-end do CRM (Supabase): autenticação + armazenamento.
+ * backend-sync.js — Back-end do CRM (Supabase): login por tabela + armazenamento.
  *
- * O app (index.html) continua praticamente igual ao original. As ÚNICAS
- * mudanças no front são na TELA DE LOGIN (agora e-mail/senha via Supabase Auth).
- * Toda a lógica de negócio, telas e cálculos permanecem intocados.
+ * Login: NÃO usa Supabase Auth. Autentica pela tabela public."user" através da
+ * função verify_login (senhas em bcrypt; os hashes não são expostos ao front).
+ * A "sessão" é um registro simples no localStorage do navegador.
  *
- * Fluxo:
- *  - Login por e-mail/senha (Supabase Auth). Sem sessão, não há acesso aos dados.
- *  - Após autenticar, baixa o estado do banco e entrega ao app.
- *  - A cada gravação do app, envia o estado ao banco (autenticado).
+ * Dados: o app continua gravando tudo no localStorage; aqui interceptamos e
+ * sincronizamos com a tabela crm_state (via chave pública).
  *
- * O acesso ao banco usa o token do usuário logado -> a política RLS
- * "authenticated" protege os dados (anônimo não lê nada).
+ * O único ponto do front que mudou é a tela de login (e-mail/senha).
  * ==========================================================================*/
 (function () {
   'use strict';
@@ -20,17 +17,16 @@
   var SUPABASE_URL      = 'https://ptinbolxxnphpsodlnyd.supabase.co';
   var SUPABASE_ANON_KEY = 'sb_publishable_rUF9NhYZZZfxqvY5Gaht9A_79CDHO7L';
 
-  var CRM_KEY  = 'assescont_crm_data_v2';   // chave que o app usa no localStorage
-  var STATE_ID = 'default';                 // um estado compartilhado pela equipe
+  var CRM_KEY    = 'assescont_crm_data_v2';   // chave do app no localStorage
+  var STATE_ID   = 'default';                 // estado compartilhado pela equipe
+  var LOGIN_KEY  = 'assescont_login';         // "sessão" local (usuário logado)
 
   if (!window.supabase || !window.supabase.createClient) {
     console.error('[backend-sync] Biblioteca supabase-js não carregada. Verifique o <script> do CDN.');
     return;
   }
 
-  var _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: false }
-  });
+  var _sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   /* ---------------- Gravação (debounce) ---------------- */
   var _timer = null, _last = null, _sending = false, _again = false;
@@ -43,8 +39,7 @@
     _sending = true;
     try {
       var raw = (_last != null) ? _last : (localStorage.getItem(CRM_KEY) || '{}');
-      var payload = { id: STATE_ID, data: JSON.parse(raw) };
-      var res = await _sb.from('crm_state').upsert(payload);
+      var res = await _sb.from('crm_state').upsert({ id: STATE_ID, data: JSON.parse(raw) });
       if (res.error) throw res.error;
     } catch (e) {
       console.error('[backend-sync] Falha ao salvar no banco:', e);
@@ -77,7 +72,8 @@
 
   // Depois de autenticar: carrega os dados, atualiza a UI e renderiza.
   async function startSession(user) {
-    window.crmBackend.email = (user && user.email) ? user.email : null;
+    window.crmBackend.email = (user && user.email) || null;
+    var nomeExibicao = (user && (user.nome || user.email)) || 'usuário';
     try {
       var blob = await loadBlob();
       if (blob) {
@@ -91,11 +87,10 @@
       alert('Não consegui carregar os dados do servidor. Verifique sua conexão.\n\nDetalhe: ' + (e.message || e));
     }
 
-    try { sessionStorage.setItem('assescont_user', window.crmBackend.email || 'usuário'); } catch (_) {}
+    try { sessionStorage.setItem('assescont_user', nomeExibicao); } catch (_) {}
     var gate = document.getElementById('gate'); if (gate) gate.classList.add('hidden');
-    var badge = document.getElementById('user-badge'); if (badge) badge.textContent = window.crmBackend.email || '';
+    var badge = document.getElementById('user-badge'); if (badge) badge.textContent = nomeExibicao;
 
-    // Re-renderiza já com os dados vindos do banco.
     try { if (typeof switchView === 'function') switchView('dashboard'); } catch (_) {}
     try { if (typeof checkLembretes === 'function') checkLembretes(); } catch (_) {}
   }
@@ -104,30 +99,32 @@
   window.crmBackend = {
     email: null,
 
-    // Login por e-mail/senha. Retorna {ok:true} ou {ok:false, message}.
+    // Login por e-mail/senha, conferido na tabela "user" (função verify_login).
     signIn: async function (email, password) {
       try {
-        var res = await _sb.auth.signInWithPassword({ email: email, password: password });
-        if (res.error) return { ok: false, message: 'E-mail ou senha incorretos.' };
-        await startSession(res.data.user);
+        var res = await _sb.rpc('verify_login', { p_email: email, p_senha: password });
+        if (res.error) return { ok: false, message: 'Não foi possível verificar o login.' };
+        var user = (res.data && res.data.length) ? res.data[0] : null;
+        if (!user) return { ok: false, message: 'E-mail ou senha incorretos.' };
+        try { localStorage.setItem(LOGIN_KEY, JSON.stringify({ email: user.email, nome: user.nome })); } catch (_) {}
+        await startSession(user);
         return { ok: true };
       } catch (e) {
         return { ok: false, message: 'Falha ao conectar. Verifique sua internet.' };
       }
     },
 
-    signOut: async function () {
-      try { await _sb.auth.signOut(); } catch (_) {}
+    signOut: function () {
+      try { localStorage.removeItem(LOGIN_KEY); } catch (_) {}
       try { sessionStorage.removeItem('assescont_user'); } catch (_) {}
       location.reload();
     },
 
-    // Se já houver sessão salva (usuário voltou), entra direto.
+    // Se já houver "sessão" local (usuário logou antes neste navegador), entra direto.
     initSession: async function () {
-      try {
-        var res = await _sb.auth.getSession();
-        if (res.data && res.data.session) await startSession(res.data.session.user);
-      } catch (_) {}
+      var saved = null;
+      try { saved = JSON.parse(localStorage.getItem(LOGIN_KEY) || 'null'); } catch (_) {}
+      if (saved && saved.email) await startSession(saved);
     }
   };
 })();
