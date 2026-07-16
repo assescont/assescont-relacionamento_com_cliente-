@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Assescont · Relacionamento</title>
-<!-- Back-end (banco de dados): guarda no Supabase tudo que o app salva. Não altera o app. -->
+<!-- Back-end: login (Supabase Auth) + armazenamento no banco. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="backend-sync.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
 <!-- SheetJS para leitura de Excel/CSV na importação -->
@@ -208,11 +209,11 @@ const DOCX_TEMPLATES_B64 = {
     <img id="gate-logo-img" class="gate-logo-img" alt="Assescont">
     <div class="gate-logo">Assescont<span>·</span></div>
     <div class="gate-sub">Relacionamento — acesso restrito</div>
-    <input type="text" id="gate-name" placeholder="Seu nome">
-    <input type="password" id="gate-code" placeholder="Código de acesso">
+    <input type="email" id="gate-name" placeholder="E-mail" autocomplete="username">
+    <input type="password" id="gate-code" placeholder="Senha" autocomplete="current-password">
     <button onclick="tryLogin()">Entrar</button>
     <div class="gate-error" id="gate-error"></div>
-    <div class="gate-hint">Acesso apenas para pessoas convidadas. Se você não recebeu o código, fale com quem administra este painel.</div>
+    <div class="gate-hint">Acesso apenas para usuários cadastrados. Se você não tem acesso, fale com quem administra este painel.</div>
   </div>
 </div>
 
@@ -739,27 +740,23 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
 </svg>
 `;
 
-  function tryLogin(){
-    const name = document.getElementById('gate-name').value.trim();
-    const code = document.getElementById('gate-code').value;
+  async function tryLogin(){
+    const email = document.getElementById('gate-name').value.trim();
+    const senha = document.getElementById('gate-code').value;
     const err = document.getElementById('gate-error');
-    if(!name){ err.textContent = "Informe seu nome."; return; }
-    if(code !== ACCESS_CODE){ err.textContent = "Código de acesso incorreto."; return; }
-    sessionStorage.setItem('assescont_user', name);
-    document.getElementById('gate').classList.add('hidden');
-    document.getElementById('user-badge').textContent = name;
+    if(!email){ err.textContent = "Informe seu e-mail."; return; }
+    if(!senha){ err.textContent = "Informe sua senha."; return; }
+    err.textContent = "Entrando...";
+    const res = await window.crmBackend.signIn(email, senha);
+    err.textContent = res.ok ? "" : (res.message || "E-mail ou senha incorretos.");
   }
   function logout(){
-    sessionStorage.removeItem('assescont_user');
-    location.reload();
+    window.crmBackend.signOut();
   }
   (function initGate(){
-    const u = sessionStorage.getItem('assescont_user');
-    if(u){
-      document.getElementById('gate').classList.add('hidden');
-      document.getElementById('user-badge').textContent = u;
-    }
     document.getElementById('gate-code').addEventListener('keydown', e=>{ if(e.key==='Enter') tryLogin(); });
+    // Se já houver sessão ativa (usuário voltou), entra direto.
+    window.crmBackend.initSession();
   })();
 
   const hoje = new Date();

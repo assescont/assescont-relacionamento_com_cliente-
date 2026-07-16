@@ -1,24 +1,24 @@
-# CRM Relacionamento — Assescont (back-end)
+# CRM Relacionamento — Assescont (back-end + login)
 
-O CRM continua sendo **exatamente o mesmo app** de antes. A única diferença é que
-agora, além de salvar no navegador, ele **guarda tudo num banco de dados (Supabase)**
-— assim os dados não ficam presos num único computador.
+O CRM continua sendo o mesmo app de antes, mas agora:
+- **guarda os dados num banco (Supabase)** — não ficam mais presos num só navegador;
+- **tem login real (e-mail/senha via Supabase Auth)** — o acesso aos dados exige
+  usuário autenticado.
 
-> **O front não foi alterado.** O `index.html` é idêntico ao original, exceto por
-> **uma linha** que carrega o adaptador de back-end (`backend-sync.js`). Nenhuma
-> tela, cálculo, login ou comportamento mudou.
+> **O front quase não mudou.** A única alteração de interface é a **tela de login**
+> (agora e-mail/senha). Todas as telas, cálculos e o resto do app continuam iguais.
 
 ---
 
 ## Como funciona
 
-- O app grava tudo (todos os inputs do front) num único objeto, como sempre fez.
-- O `backend-sync.js` intercepta essa gravação e **envia uma cópia ao banco**.
-- Ao abrir a página, ele **busca os dados no banco** e entrega ao app. Se o banco
-  estiver vazio, usa o que houver no navegador e o **sobe** na primeira gravação
-  (migração automática dos dados antigos).
+- Ao abrir, o app pede **login (e-mail/senha)**. Sem login, não há acesso aos dados.
+- Depois de autenticar, ele **baixa o estado do banco** e mostra no app.
+- A cada alteração, salva o estado no banco (autenticado). Se o banco estiver vazio,
+  sobe o que houver no navegador na primeira gravação (migração automática).
 
-Os dados ficam numa tabela `crm_state` (um documento JSON compartilhado pela equipe).
+Os dados ficam numa tabela `crm_state` (um documento JSON compartilhado pela equipe),
+protegida por **RLS**: só usuários autenticados leem/escrevem.
 
 ---
 
@@ -26,68 +26,66 @@ Os dados ficam numa tabela `crm_state` (um documento JSON compartilhado pela equ
 
 | Arquivo | O que é |
 |---|---|
-| `index.html` | O app (original + 1 linha que carrega o `backend-sync.js`). |
-| `backend-sync.js` | O adaptador de back-end (fala com o Supabase). **Aqui vão as credenciais.** |
+| `index.html` | O app. Igual ao original, exceto a tela de login + 2 linhas que carregam o back-end. |
+| `backend-sync.js` | Back-end: login (Supabase Auth) + leitura/gravação no banco. **Credenciais aqui.** |
 | `RELACIONAMENTO_ASSESCONT_-_07_2026_2.html` | Original intocado (backup). |
 | `supabase/migrations/0001_init.sql` | Cria a tabela `crm_state`. |
+| `supabase/migrations/0002_auth_only.sql` | Trava o acesso: só usuários autenticados. |
 | `vercel.json` | Config do deploy estático. |
 
 ---
 
 ## Passo a passo (você executa, nas SUAS contas)
 
-> Crie recursos **novos e dedicados**. Não reaproveite projetos existentes.
+### 1. Banco (já feito)
+A tabela `crm_state` já foi criada (você rodou o `0001_init.sql`). ✅
 
-### 1. Criar o projeto no Supabase
-Em https://supabase.com, crie um **projeto novo** (ex.: `crm-relacionamento-assescont`).
+### 2. Criar o(s) usuário(s) de login
+No painel do Supabase: **Authentication → Users → Add user**. Informe e-mail e senha.
+Usuários criados aqui já vêm **confirmados** e podem entrar direto.
+(Repita para cada pessoa da equipe.)
 
-### 2. Criar a tabela
-No projeto, abra **SQL Editor**, cole o conteúdo de
-`supabase/migrations/0001_init.sql` e clique em **Run**.
-(Ou via CLI: `supabase link --project-ref <REF>` e `supabase db push`.)
+### 3. Trancar o acesso (rodar a 2ª migração)
+No **SQL Editor**, cole e rode o conteúdo de `supabase/migrations/0002_auth_only.sql`.
+A partir daí, só quem tem login acessa os dados.
+> Faça isto **depois** de já ter criado ao menos um usuário (passo 2).
 
-### 3. Preencher as credenciais
-No painel: **Project Settings > API**. Copie a **Project URL** e a **anon public** key.
-Abra `backend-sync.js` e preencha no topo:
-```js
-var SUPABASE_URL      = "https://SEU-PROJETO.supabase.co";
-var SUPABASE_ANON_KEY = "eyJ...sua-anon-key...";
-```
-> Nunca use a `service_role` key aqui.
+### 4. Credenciais no app (já feito)
+`SUPABASE_URL` e a chave publishable já estão no `backend-sync.js`. ✅
+(A chave publishable é pública por design; quem protege os dados é o login + RLS.)
 
-### 4. Testar
-Abra `index.html` no navegador. Entre no app (mesma tela de sempre). Crie/edite um
-registro; recarregue a página — os dados devem continuar lá (agora vêm do banco).
-Para conferir: no painel do Supabase, **Table Editor > crm_state** deve ter 1 linha.
+### 5. Testar
+Abra o app, faça login com o usuário do passo 2. Crie/edite um registro; recarregue —
+os dados devem continuar lá (vêm do banco). Confira em **Table Editor → crm_state**.
 
-### 5. Publicar na Vercel
-- **CLI:** `vercel` (crie um projeto **novo**) e depois `vercel --prod`.
-- **Painel:** vercel.com > Add New > Project > importe esta pasta. Framework: **Other**
-  (site estático, sem build). Deploy.
+### 6. Publicar na Vercel
+- **Painel:** vercel.com → Add New → Project → importe o repositório
+  `assescont/assescont-relacionamento_com_cliente-`. Framework: **Other** (site
+  estático, sem build). Deploy.
+- **CLI:** `vercel` (projeto novo) e `vercel --prod`.
 
-Entregue a URL de produção ao final.
+Não precisa configurar variáveis de ambiente na Vercel.
 
 ---
 
 ## Checklist
-- [ ] Projeto Supabase novo criado.
-- [ ] Tabela `crm_state` criada (rodou o `0001_init.sql`).
-- [ ] `SUPABASE_URL` e `SUPABASE_ANON_KEY` preenchidos em `backend-sync.js`.
-- [ ] Teste local: dados persistem após recarregar; `crm_state` tem 1 linha.
-- [ ] Projeto Vercel novo criado e deploy de produção feito.
+- [x] Tabela `crm_state` criada (`0001_init.sql`).
+- [ ] Pelo menos um usuário criado em Authentication → Users.
+- [ ] `0002_auth_only.sql` aplicado (acesso só para autenticados).
+- [ ] Teste: login funciona; dados persistem após recarregar.
+- [ ] Deploy na Vercel (projeto novo) e URL de produção acessível.
 
 ---
 
-## ⚠️ Sobre segurança de acesso (leia)
+## Segurança
+- **Login real:** e-mail/senha via Supabase Auth. Sem sessão válida, o app não
+  carrega os dados e o banco recusa o acesso (RLS `authenticated`).
+- A chave **publishable** no `backend-sync.js` é pública por design — ela sozinha
+  não dá acesso aos dados; é preciso estar logado.
+- A `service_role` key **nunca** aparece no código.
 
-Como **o front não foi alterado**, o app mantém a tela de login **original**, que é
-apenas visual (roda no navegador e não protege o banco). O acesso ao banco é feito
-com a **chave anônima**, que fica no `backend-sync.js` (servido publicamente).
-
-**Na prática:** quem tiver a URL do site e olhar o código consegue ler/escrever os
-dados. Isso é uma consequência direta de "não mexer no front".
-
-Se você quiser **segurança real** (login por usuário que de fato protege os dados),
-isso exige alterar a tela de login para autenticar no Supabase — me avise que eu
-faço a versão mínima disso. Enquanto isso, dá para reduzir a exposição mantendo a
-URL do site restrita ao seu time.
+### Observações
+- **Dados compartilhados:** toda a equipe usa o mesmo estado (`id = 'default'`).
+  Em edições simultâneas, vale a última gravação.
+- **Gerenciar usuários:** criar/remover acessos é feito no painel do Supabase
+  (Authentication → Users).
