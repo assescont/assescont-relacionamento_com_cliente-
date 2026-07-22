@@ -21,6 +21,11 @@
   var STATE_ID   = 'default';                 // estado compartilhado pela equipe
   var LOGIN_KEY  = 'assescont_login';         // "sessão" local (usuário logado)
 
+  // Seções que NÃO vão para o banco (ficam só neste navegador). A aba
+  // "Controle Pessoal" (acessos) guarda senhas — e o banco é acessível pela
+  // chave pública, então essas senhas jamais são enviadas ao servidor.
+  var LOCAL_ONLY_KEYS = ['acessos'];
+
   if (!window.supabase || !window.supabase.createClient) {
     console.error('[backend-sync] Biblioteca supabase-js não carregada. Verifique o <script> do CDN.');
     return;
@@ -44,7 +49,9 @@
     _sending = true;
     try {
       var raw = (_last != null) ? _last : (localStorage.getItem(CRM_KEY) || '{}');
-      var res = await _sb.from('crm_state').upsert({ id: STATE_ID, data: JSON.parse(raw) });
+      var obj = JSON.parse(raw);
+      LOCAL_ONLY_KEYS.forEach(function (k) { delete obj[k]; });  // não envia senhas ao banco
+      var res = await _sb.from('crm_state').upsert({ id: STATE_ID, data: obj });
       if (res.error) throw res.error;
     } catch (e) {
       console.error('[backend-sync] Falha ao salvar no banco:', e);
@@ -72,7 +79,10 @@
 
   function applyBlob(blob) {
     if (!blob || typeof DATA === 'undefined') return;
-    Object.keys(DATA).forEach(function (k) { if (Array.isArray(blob[k])) DATA[k] = blob[k]; });
+    Object.keys(DATA).forEach(function (k) {
+      if (LOCAL_ONLY_KEYS.indexOf(k) !== -1) return;   // preserva o que é só local (Controle Pessoal)
+      if (Array.isArray(blob[k])) DATA[k] = blob[k];
+    });
   }
 
   // Depois de autenticar: carrega os dados, atualiza a UI e renderiza.
