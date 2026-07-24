@@ -239,6 +239,13 @@ const DOCX_TEMPLATES_B64 = {
   </div>
 </header>
 
+<div id="lembrete-backup" style="display:none;align-items:center;justify-content:space-between;gap:12px;background:rgba(255,160,50,0.12);border-bottom:1px solid rgba(255,160,50,0.3);padding:8px 24px;font-size:.8rem">
+  <span></span>
+  <div style="display:flex;gap:8px;flex-shrink:0">
+    <button class="btn btn-ghost" style="padding:4px 12px;font-size:.75rem" onclick="exportarBackup()">💾 Baixar backup agora</button>
+    <button class="btn btn-ghost" style="padding:4px 12px;font-size:.75rem" onclick="esconderLembreteBackup()">Lembrar depois</button>
+  </div>
+</div>
 <div class="tabs" id="tabs"></div>
 <div id="toast"></div>
 
@@ -365,14 +372,115 @@ const DOCX_TEMPLATES_B64 = {
   </div>
 </div>
 
+<!-- log automático de qualquer mudança de valor de honorário (diferente do reajuste negociado acima) -->
+<div class="modal-overlay" id="modal-historico-honorario">
+  <div class="modal" style="width:560px">
+    <div class="modal-title" id="historico-honorario-title">Histórico de honorário</div>
+    <button class="modal-close" onclick="closeHistoricoHonorarioModal()">✕</button>
+    <p style="color:var(--gray2);font-size:.8rem;margin-bottom:12px">Toda mudança de valor do honorário (edição manual, importação, edição em massa) fica registrada aqui automaticamente.</p>
+    <div id="historico-honorario-body" style="max-height:400px;overflow-y:auto"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeHistoricoHonorarioModal()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- histórico de mudança de status do cliente e de classificação do relacionamento -->
+<div class="modal-overlay" id="modal-historico-status">
+  <div class="modal" style="width:560px">
+    <div class="modal-title" id="historico-status-title">Histórico de status/classificação</div>
+    <button class="modal-close" onclick="closeHistoricoStatusModal()">✕</button>
+    <p style="color:var(--gray2);font-size:.8rem;margin-bottom:12px">Toda mudança de Status (Ativo/Cancelado) ou de Nível de relacionamento (A/B/C/D) fica registrada aqui automaticamente.</p>
+    <div id="historico-status-body" style="max-height:400px;overflow-y:auto"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeHistoricoStatusModal()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- lançamento do mesmo RNC (mesmo erro) para várias empresas de uma vez -->
+<div class="modal-overlay" id="modal-rnc-massa">
+  <div class="modal" style="width:640px;max-height:85vh;display:flex;flex-direction:column">
+    <div class="modal-title">⚠️ Lançar RNC em massa</div>
+    <button class="modal-close" onclick="closeRncMassaModal()">✕</button>
+    <p style="color:var(--gray2);font-size:.82rem;margin-bottom:14px">Quando o mesmo erro aconteceu com várias empresas (ex: falha do sistema, prazo perdido em lote), preencha uma vez só e selecione todos os clientes afetados.</p>
+    <div style="overflow-y:auto;flex:1">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Setor responsável</label>
+          <select id="rncm-setor">
+            <option value="">Selecione</option>
+            <option>Fiscal</option><option>Contábil</option><option>Societário</option>
+            <option>Trabalhista</option><option>Financeiro</option><option>Relacionamento</option><option>Outros</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Competência do erro (ex: 07/2026)</label>
+          <input type="text" id="rncm-competencia" placeholder="MM/AAAA">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Descrição do erro (o que foi)</label>
+        <textarea id="rncm-descricaoErro" rows="2"></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Data do lançamento</label>
+          <input type="date" id="rncm-data">
+        </div>
+        <div class="form-group">
+          <label>Classificação do erro</label>
+          <select id="rncm-classificacaoErro">
+            <option value="">Selecione</option>
+            <option>Leve</option><option>Moderado</option><option>Grave</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Houve multa?</label>
+          <select id="rncm-multa">
+            <option value="">Selecione</option>
+            <option>Não</option><option>Sim - paga pela Assescont</option><option>Sim - paga pelo cliente</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Valor da multa (por empresa, se houver)</label>
+          <input type="text" id="rncm-valorMulta" placeholder="R$ 0,00">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Medida corretiva</label>
+        <textarea id="rncm-medidaCorretiva" rows="2"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Medida preventiva</label>
+        <textarea id="rncm-medidaPreventiva" rows="2"></textarea>
+      </div>
+      <hr style="border-color:rgba(217,184,150,0.15);margin:14px 0">
+      <div class="form-group">
+        <label>Empresas afetadas (selecione todas que tiveram o mesmo erro)</label>
+        <input type="text" class="search-input" placeholder="Buscar cliente..." oninput="filtrarListaRncMassa(this.value)" style="margin-bottom:8px">
+        <div id="rncm-lista-clientes" style="max-height:220px;overflow-y:auto;border:1px solid rgba(217,184,150,0.15);border-radius:8px;padding:8px"></div>
+        <p style="color:var(--gray1);font-size:.72rem;margin-top:4px"><span id="rncm-contador">0</span> empresa(s) selecionada(s)</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeRncMassaModal()">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarRncMassa()">Lançar RNC para os selecionados</button>
+    </div>
+  </div>
+</div>
+
 <!-- card rápido de dados do cliente -->
 <div class="modal-overlay" id="modal-cliente-view">
-  <div class="modal" style="width:480px">
+  <div class="modal" style="width:640px;max-height:85vh;display:flex;flex-direction:column">
     <div class="modal-title" id="cliente-view-title">Cliente</div>
     <button class="modal-close" onclick="closeClienteView()">✕</button>
-    <div id="cliente-view-body"></div>
+    <div id="cliente-view-body" style="overflow-y:auto;flex:1"></div>
     <div class="modal-footer">
       <button class="btn btn-ghost" onclick="closeClienteView()">Fechar</button>
+      <button class="btn btn-ghost" id="cliente-view-pdf-btn">🧾 Exportar PDF</button>
       <button class="btn btn-primary" id="cliente-view-edit-btn">Editar cliente</button>
     </div>
   </div>
@@ -406,7 +514,7 @@ const DOCX_TEMPLATES_B64 = {
   document.getElementById('header-logo-img').src = LOGO_SRC;
 
   const ACCESS_CODE = "assescont2026";
-  const VALOR_HORA = 80; // R$ por hora — usado no comparativo de horas do honorário calculado em Comercial
+  const VALOR_HORA = 180; // R$ por hora (custo) — usado no comparativo de horas do honorário calculado em Comercial e nos cálculos de Rentabilidade
 
   /* ======================================================================
      MOTOR DE CÁLCULO DE HONORÁRIO — replica exatamente a PLANILHA DE
@@ -497,6 +605,13 @@ const DOCX_TEMPLATES_B64 = {
       regime: record.regimeTributario,
       filiais: record.filiais
     });
+  }
+  // Honorário "de verdade" de uma proposta: o que foi efetivamente enviado (preenchido manualmente,
+  // quando difere do sugerido — negociação, arredondamento etc.), senão o calculado pela planilha.
+  // Usado sempre que se precisa do honorário real da proposta: geração de documentos, aceite,
+  // previsão de faturamento no pipeline etc.
+  function honorarioEfetivoComercial(record){
+    return (record.honorarioEnviado && parseMoneyLike(record.honorarioEnviado)>0) ? parseMoneyLike(record.honorarioEnviado) : honorarioComercial(record);
   }
 
   const BRASIL_SVG = `<svg version="1.1" id="assescont-brasil-map" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px" width="450px" height="460px" viewBox="0 0 450 460" enable-background="new 0 0 450 460" xml:space="preserve">
@@ -839,7 +954,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     comercial: {
       label:'Comercial', icon:'💰',
       title:'Comercial — propostas',
-      subtitle:'Primeiro cadastro do cliente é feito aqui, pelo CNPJ · Honorário calculado automaticamente pela planilha de orçamento (faturamento anual + nº de funcionários + regime + filiais) · o comparativo em horas é só a título de informação (R$ 80,00/h) · Aceita → cria em Clientes e ONB · enviada → validar recebimento · pendente → D+7/D+15/D+30 · recusada → registrar motivo e recontato em 6 meses',
+      subtitle:'Primeiro cadastro do cliente é feito aqui, pelo CNPJ · Honorário calculado automaticamente pela planilha de orçamento (faturamento anual + nº de funcionários + regime + filiais) · o comparativo em horas é só a título de informação (R$ 180,00/h) · Aceita → cria em Clientes e ONB · enviada → validar recebimento · pendente → D+7/D+15/D+30 · recusada → registrar motivo e recontato em 6 meses',
       sortField:'_numeroProposta', sortDir:'desc',
       fields:[
         {key:'numeroProposta', label:'Nº da proposta', type:'computed', compute:(r)=> r._numeroProposta ? '#'+Number(r._numeroProposta).toLocaleString('pt-BR') : '—'},
@@ -853,11 +968,12 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         {key:'cnpjsFiliais', label:'CNPJ de cada filial (a precificação é centralizada na matriz — cobrado um valor fixo por filial, conforme a planilha)', shortLabel:'Filiais', type:'filiaisDetalhado'},
         {key:'funcionarios', label:'Nº de funcionários (dado da planilha de cálculo)', type:'number'},
         {key:'honorarioCalculado', label:'Honorário mensal sugerido (calculado automaticamente pela planilha)', shortLabel:'Honorário calculado', type:'computed', compute:(r)=> formatMoney(honorarioComercial(r))},
-        {key:'horasComparativo', label:'Comparativo em horas (a título de informação — nossa hora: R$ 80,00)', shortLabel:'Comparativo (h)', type:'computed', compute:(r)=>{
+        {key:'honorarioEnviado', label:'Honorário efetivamente enviado na proposta (preencha só se for diferente do sugerido pela planilha — esse valor é o que vale para o cliente e para os controles)', shortLabel:'Honorário enviado', type:'currency'},
+        {key:'horasComparativo', label:'Comparativo em horas (a título de informação — nossa hora: R$ 180,00)', shortLabel:'Comparativo (h)', type:'computed', compute:(r)=>{
           const h = honorarioComercial(r);
           if(!h) return '—';
           const horas = h / VALOR_HORA;
-          return horas.toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}) + ' horas (a R$ 80,00/h)';
+          return horas.toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}) + ' horas (a R$ 180,00/h)';
         }},
         {key:'documentos', label:'Documentos recebidos', type:'select', options:['Completos','Pendentes','Não iniciado']},
         {key:'sistemaFinanceiro', label:'Sistema financeiro', type:'text'},
@@ -867,6 +983,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         {key:'cpfSocioContratante', label:'CPF do sócio/representante', shortLabel:'CPF do sócio', type:'text'},
         {key:'emailSocioContratante', label:'E-mail do sócio/representante', shortLabel:'E-mail do sócio', type:'text'},
         {key:'dataEnvioProposta', label:'Data envio da proposta', type:'date'},
+        {key:'prazoRetorno', label:'Prazo de retorno esperado do cliente (gera um lembrete em Demandas nesse dia)', shortLabel:'Prazo retorno', type:'date'},
         {key:'statusProposta', label:'Status proposta', type:'select', options:['Proposta enviada','Aceita','Pendente','Recusada'], chipMap:{'Aceita':'green','Proposta enviada':'teal','Pendente':'orange','Recusada':'red'}},
         {key:'dataGanho', label:'Data do ganho (aceite) — preenche sozinha ao aceitar', shortLabel:'Data do ganho', type:'date'},
         {key:'tempoConversao', label:'Tempo até converter', type:'computed', compute:(r)=>{
@@ -881,7 +998,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         {key:'propostaPdf', label:'Proposta gerada (PDF) — gerada automaticamente, pode substituir', shortLabel:'Proposta (PDF)', type:'file'},
         {key:'propostaDocx', label:'Proposta em Word (.docx) — gerada automaticamente, pronta para envio ao cliente', shortLabel:'Proposta (Word)', type:'file'}
       ],
-      columns:['numeroProposta','clienteId','statusProposta','dataGanho','tempoConversao','regimeTributario','faturamentoAnual','funcionarios','honorarioCalculado','horasComparativo','cnpjsFiliais','competenciaEntrada','propostaDocx']
+      columns:['numeroProposta','clienteId','statusProposta','dataGanho','tempoConversao','regimeTributario','faturamentoAnual','funcionarios','honorarioCalculado','honorarioEnviado','horasComparativo','cnpjsFiliais','competenciaEntrada','propostaDocx']
     },
 
     onb: {
@@ -909,7 +1026,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         {key:'demanda', label:'Demanda', type:'textarea', required:true},
         {key:'dataRecebida', label:'Data recebida', type:'date'},
         {key:'prazo', label:'Prazo', type:'date'},
-        {key:'setor', label:'Setor', type:'select', options:['Comercial','Fiscal','Contábil','Societário','Trabalhista','Financeiro','Outros']},
+        {key:'setor', label:'Setor', type:'select', options:['Fiscal','Contábil','Pessoal','Legalização','Comercial','T.I','Diretoria','Marketing','Advisa']},
         {key:'status', label:'Status', type:'select', options:['Pendente','Em andamento','Finalizado'], chipMap:{'Pendente':'orange','Em andamento':'teal','Finalizado':'green'}},
         {key:'recorrente', label:'Demanda recorrente?', type:'select', options:['Não','Sim'], chipMap:{'Sim':'teal','Não':'gray'}},
         {key:'periodoRecorrencia', label:'Período para voltar como pendente', type:'select', options:['Semanal','Mensal','Bimestral','Trimestral','Semestral','Anual']},
@@ -945,7 +1062,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         {key:'emailResponsavelLegal', label:'E-mail do responsável legal', type:'text'},
         {key:'telefoneContato', label:'Telefone', type:'text'},
         {key:'emailContato', label:'E-mail', type:'text'},
-        {key:'competenciaEntrada', label:'Competência de entrada', type:'text'},
+        {key:'competenciaEntrada', label:'Competência de entrada', shortLabel:'Competência entrada', type:'text'},
         {key:'dataAssinaturaContrato', label:'Data de assinatura do contrato', type:'date'},
         {key:'numeroProposta', label:'Nº da proposta', type:'text'},
         {key:'numeroContrato', label:'Nº do contrato', type:'text'},
@@ -968,7 +1085,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         {key:'proximaRenovacao', label:'Próxima renovação', type:'date'},
         {key:'baseConhecimento', label:'Base de conhecimento (observações livres, preferências, informações estratégicas)', type:'textarea'}
       ],
-      columns:['razaoSocial','cnpj','grupo','statusCliente','cidadeUf','regime','honorario']
+      columns:['razaoSocial','cnpj','grupo','statusCliente','divisaoChip','cidadeUf','regime','competenciaEntrada','honorario']
     },
 
     relacionamento: {
@@ -991,9 +1108,9 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       fields:[
         {key:'clienteId', label:'Cliente', type:'clientRef', required:true},
         {key:'oportunidade', label:'Oportunidade identificada', type:'text', required:true},
-        {key:'origem', label:'Origem', type:'select', options:['Reunião','Ligação','Indicação','Observação','Outro']},
+        {key:'origem', label:'Origem', type:'select', options:['Reunião','Ligação','Indicação','Observação','Renegociação de honorário','Outro']},
         {key:'data', label:'Data', type:'date'},
-        {key:'valorEstimado', label:'Valor estimado', type:'text'},
+        {key:'valorEstimado', label:'Valor estimado', type:'currency'},
         {key:'responsavel', label:'Responsável', type:'text'},
         {key:'status', label:'Status', type:'select', options:['Identificada','Em andamento','Convertida','Perdida'], chipMap:{'Identificada':'teal','Em andamento':'orange','Convertida':'green','Perdida':'red'}}
       ],
@@ -1048,20 +1165,35 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
           const horas = parseNum(r.horasOrcadas);
           return horas>0 ? formatMoney(honorario/horas) : '—';
         }},
-        {key:'custoEstimadoHoras', label:'Custo estimado do escritório (horas gastas × R$ 80,00/hora) — indicador 2', shortLabel:'Custo estimado', type:'computed', compute:(r)=>{
+        {key:'custoEstimadoHoras', label:'Custo estimado do escritório (horas gastas × R$ 180,00/hora) — indicador 2', shortLabel:'Custo estimado', type:'computed', compute:(r)=>{
           const horas = parseNum(r.horasGastas);
-          return horas>0 ? formatMoney(horas*80) : '—';
+          return horas>0 ? formatMoney(horas*VALOR_HORA) : '—';
         }},
         {key:'desvioReais', label:'Diferença honorário atual x custo estimado (R$) — negativo indica que o custo estimado já supera o que é cobrado', shortLabel:'Diferença (R$)', type:'computed', compute:(r)=>{
           const c = getCliente(r.clienteId);
           const honorario = c ? parseMoneyLike(c.honorario) : 0;
           const horas = parseNum(r.horasGastas);
           if(horas<=0) return '—';
-          return formatMoney(honorario - horas*80);
+          return formatMoney(honorario - horas*VALOR_HORA);
+        }},
+        {key:'ajusteSugeridoHonorario', label:'Ajuste sugerido no honorário (R$ 180,00 × horas excedentes) — positivo é aumento, negativo é redução', shortLabel:'Ajuste sugerido', type:'computed', compute:(r)=>{
+          const orcadas = parseNum(r.horasOrcadas), gastas = parseNum(r.horasGastas);
+          if(orcadas<=0 && gastas<=0) return '—';
+          const excedente = gastas - orcadas; // positivo = gastou mais do que orçado (precisa aumentar); negativo = gastou menos (pode reduzir)
+          const ajuste = excedente * VALOR_HORA;
+          return (ajuste>0?'+ ':(ajuste<0?'- ':'')) + formatMoney(Math.abs(ajuste));
+        }},
+        {key:'honorarioSugerido', label:'Honorário sugerido (honorário atual + ajuste sugerido)', shortLabel:'Honorário sugerido', type:'computed', compute:(r)=>{
+          const c = getCliente(r.clienteId);
+          const honorario = c ? parseMoneyLike(c.honorario) : 0;
+          const orcadas = parseNum(r.horasOrcadas), gastas = parseNum(r.horasGastas);
+          if(orcadas<=0 && gastas<=0) return '—';
+          const ajuste = (gastas - orcadas) * VALOR_HORA;
+          return formatMoney(honorario + ajuste);
         }},
         {key:'observacoes', label:'Observações', type:'textarea'}
       ],
-      columns:['clienteId','grupoCliente','competencia','faturamentoContratado','faturamentoAtual','desvioFaturamento','funcionariosContratado','funcionariosAtual','horasOrcadas','horasGastas','desvio','valorHoraCobrado','custoEstimadoHoras','desvioReais']
+      columns:['clienteId','grupoCliente','competencia','faturamentoContratado','faturamentoAtual','desvioFaturamento','funcionariosContratado','funcionariosAtual','horasOrcadas','horasGastas','desvio','valorHoraCobrado','custoEstimadoHoras','desvioReais','ajusteSugeridoHonorario','honorarioSugerido']
     },
 
     rnc: {
@@ -1071,7 +1203,9 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       fields:[
         {key:'clienteId', label:'Cliente', type:'clientRef', required:true},
         {key:'setor', label:'Setor responsável', type:'select', options:['Fiscal','Contábil','Societário','Trabalhista','Financeiro','Relacionamento','Outros']},
-        {key:'data', label:'Data', type:'date'},
+        {key:'competencia', label:'Competência do erro (mês/ano em que o erro aconteceu, ex: 07/2026 — diferente da data do lançamento)', shortLabel:'Competência do erro', type:'text'},
+        {key:'descricaoErro', label:'Descrição do erro (o que foi)', type:'textarea', required:true},
+        {key:'data', label:'Data do lançamento (quando você está registrando)', shortLabel:'Data lançamento', type:'date'},
         {key:'classificacaoErro', label:'Classificação do erro', type:'select', options:['Leve','Moderado','Grave'], chipMap:{'Leve':'teal','Moderado':'orange','Grave':'red'}},
         {key:'multa', label:'Houve multa?', type:'select', options:['Não','Sim - paga pela Assescont','Sim - paga pelo cliente']},
         {key:'valorMulta', label:'Valor da multa', type:'currency'},
@@ -1079,7 +1213,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         {key:'clienteNotificou', label:'Cliente notificou?', type:'select', options:['Sim','Não']},
         {key:'medidaPreventiva', label:'Medida preventiva', type:'textarea'}
       ],
-      columns:['clienteId','setor','classificacaoErro','data','valorMulta']
+      columns:['clienteId','setor','descricaoErro','classificacaoErro','competencia','data','valorMulta']
     },
 
     parceiros: {
@@ -1116,7 +1250,10 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
   let DATA = {};
   Object.keys(SECTIONS).forEach(k=>{ DATA[k] = []; });
   DATA.historico = []; // continua existindo como dado interno (log de interações), mesmo sem aba própria
-  DATA.reajustes = []; // histórico de reajustes de honorário, por cliente
+  DATA.reajustes = []; // histórico de reajustes de honorário NEGOCIADOS, por cliente (com justificativa pra diretoria)
+  DATA.historicoHonorario = []; // log de TODA mudança de valor de honorário (manual, importação, edição em massa) — pode excluir se preencheu errado
+  DATA.configColaboradoresOperacionais = DATA.configColaboradoresOperacionais || 0; // usado no cálculo de capacidade operacional (HH) em Rentabilidade
+  DATA.historicoStatus = []; // log de mudança de status (Ativo/Cancelado) e de classificação (A/B/C/D) do relacionamento
   try{
     const saved = JSON.parse(localStorage.getItem(DATA_KEY) || '{}');
     Object.keys(saved).forEach(k=>{ if(DATA.hasOwnProperty(k)) DATA[k] = saved[k]; });
@@ -1144,6 +1281,19 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         });
       });
     });
+    // Migração: a lista de departamentos de Demandas mudou — reaproveita os que têm correspondência clara
+    // antes da limpeza genérica (que zeraria qualquer valor que não bate mais com a lista nova).
+    const REMAPEAMENTO_SETOR_DEMANDAS = { 'Societário':'Legalização', 'Trabalhista':'Pessoal' };
+    (DATA.demandas||[]).forEach(d=>{
+      if(d.setor && REMAPEAMENTO_SETOR_DEMANDAS[d.setor]) d.setor = REMAPEAMENTO_SETOR_DEMANDAS[d.setor];
+    });
+    // Migração: "Valor estimado" de Oportunidades era texto livre — vira número de verdade, pra dar pra
+    // somar e mostrar nos indicadores (antes era impossível calcular valor convertido/em aberto).
+    (DATA.oportunidades||[]).forEach(o=>{
+      if(o.valorEstimado!==undefined && o.valorEstimado!==null && o.valorEstimado!==''){
+        o.valorEstimado = parseMoneyLike(o.valorEstimado);
+      }
+    });
     // Migração: campo select só pode ser uma das opções válidas — valores importados de antes que não
     // batem com nenhuma opção (ex: "Consórcio", "Parcelamento - Baixadas", "Contabilidade Externa" na
     // coluna de Regime tributário) viram vazio ("—" na tela), em vez de continuar mostrando lixo.
@@ -1155,6 +1305,22 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
           if(r[f.key] && !f.options.includes(r[f.key])) r[f.key] = '';
         });
       });
+    });
+    // Migração: reuniões da Agenda que já estavam marcadas "Realizada" antes desta correção existir —
+    // sem isso, elas continuariam invisíveis pro índice de relacionamento e pro contador de interações.
+    (DATA.agenda||[]).forEach(a=>{
+      if(a.status==='Realizada' && !a.historicoGeradoId && a.clienteId){
+        const h = {
+          id:'r'+Date.now()+Math.random().toString(16).slice(2)+Math.random().toString(16).slice(2),
+          tipo:'Reunião',
+          data: a.dataProgramada || new Date().toISOString().slice(0,10),
+          assunto: 'Reunião'+(a.periodicidade?' ('+a.periodicidade+')':'')+' — registrada pela Agenda',
+          observacoes: a.observacoes||'',
+          clienteId: a.clienteId
+        };
+        DATA.historico.push(h);
+        a.historicoGeradoId = h.id;
+      }
     });
     // Migração: registros antigos de relacionamento não tinham "chave" (agrupamento por grupo)
     DATA.relacionamento.forEach(r=>{
@@ -1178,6 +1344,8 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     });
     if(Array.isArray(DATA.historico)) DATA.historico = DATA.historico.filter(h=>!h.clienteId || idsExistentes.has(h.clienteId));
     if(Array.isArray(DATA.reajustes)) DATA.reajustes = DATA.reajustes.filter(r=>!r.clienteId || idsExistentes.has(r.clienteId));
+    if(Array.isArray(DATA.historicoHonorario)) DATA.historicoHonorario = DATA.historicoHonorario.filter(h=>!h.clienteId || idsExistentes.has(h.clienteId));
+    if(Array.isArray(DATA.historicoStatus)) DATA.historicoStatus = DATA.historicoStatus.filter(h=>!h.clienteId || idsExistentes.has(h.clienteId));
     (DATA.parceiros||[]).forEach(p=>{ if(p.clienteComum && !idsExistentes.has(p.clienteComum)) p.clienteComum=''; });
     if(Array.isArray(DATA.relacionamento)){
       const gruposExistentes = new Set(DATA.clientes.filter(c=>c.grupo && c.grupo.trim()).map(c=>c.grupo.trim()));
@@ -1207,7 +1375,28 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    localStorage.setItem('assescont_ultimo_backup', new Date().toISOString());
+    esconderLembreteBackup();
     showToast('Backup baixado! Guarde esse arquivo em local seguro.');
+  }
+  // Como todos os dados vivem só no navegador (localStorage), esquecer de fazer backup é o maior
+  // risco do sistema — um lembrete visual (sem popup incômodo) depois de 7 dias sem baixar.
+  function checarLembreteBackup(){
+    const ultimo = localStorage.getItem('assescont_ultimo_backup');
+    const dias = ultimo ? Math.floor((Date.now() - new Date(ultimo).getTime())/86400000) : Infinity;
+    if(dias>=7){
+      const el = document.getElementById('lembrete-backup');
+      if(el){
+        el.style.display = 'flex';
+        el.querySelector('span').textContent = ultimo
+          ? `💾 Já fazem ${dias} dias desde o último backup — que tal baixar um agora?`
+          : '💾 Você ainda não fez nenhum backup nesta sessão — que tal baixar um agora?';
+      }
+    }
+  }
+  function esconderLembreteBackup(){
+    const el = document.getElementById('lembrete-backup');
+    if(el) el.style.display = 'none';
   }
 
   function importarBackup(evt){
@@ -1293,7 +1482,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         <span style="color:var(--gray1);font-size:.78rem">até</span>
         <input type="date" class="search-input" style="width:150px" value="${filtroFim}" onchange="filtroFim=this.value; renderMain();" title="Data de fim">
         <button class="btn btn-ghost" onclick="filtroInicio='';filtroFim='';renderMain();">Sem período (tudo)</button>
-        ${ativo ? '<span class="chip chip-teal">Filtro de período ativo</span>' : ''}
+        ${ativo ? `<span class="chip chip-orange" title="Registros com data fora desse período não aparecem nos indicadores">⚠️ Filtro ativo: ${filtroInicio?new Date(filtroInicio+'T00:00:00').toLocaleDateString('pt-BR'):'início'} até ${filtroFim?new Date(filtroFim+'T00:00:00').toLocaleDateString('pt-BR'):'hoje'}</span>` : ''}
       </div>
     `;
   }
@@ -1457,6 +1646,8 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     const semContato = [];
     const aniversarios = [];
     const renovacoes = [];
+    const demandasVencendo = [];
+    const rncRecorrente = [];
     DATA.clientes.filter(c=>c.statusCliente==='Ativo').forEach(c=>{
       const hist = DATA.historico.filter(h=>h.clienteId===c.id).map(h=>h.data).filter(Boolean).sort();
       const ultimo = hist.length ? hist[hist.length-1] : null;
@@ -1477,8 +1668,27 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         const d = daysDiff(c.proximaRenovacao);
         if(d!==null && d>=0 && d<=30) renovacoes.push({cliente:c, dias:d});
       }
+
+      // RNC recorrente: 2 ou mais registros nos últimos 12 meses — merece atenção mesmo sem serem todos graves
+      const cutoffRnc = new Date(); cutoffRnc.setFullYear(cutoffRnc.getFullYear()-1);
+      const rncsRecentes = DATA.rnc.filter(r=>r.clienteId===c.id && r.data && new Date(r.data+'T00:00:00')>=cutoffRnc);
+      if(rncsRecentes.length>=2){
+        rncRecorrente.push({cliente:c, qtd:rncsRecentes.length, graves: rncsRecentes.filter(r=>r.classificacaoErro==='Grave').length});
+      }
     });
-    return { semContato, aniversarios, renovacoes };
+
+    // Demandas com prazo vencido ou vencendo nos próximos 5 dias (e ainda não finalizadas)
+    DATA.demandas.forEach(d=>{
+      if(d.status==='Finalizado' || !d.prazo) return;
+      const dias = daysDiff(d.prazo);
+      if(dias!==null && dias<=5){
+        const c = getCliente(d.clienteId);
+        demandasVencendo.push({ demanda:d, cliente:c, dias });
+      }
+    });
+    demandasVencendo.sort((a,b)=>a.dias-b.dias);
+
+    return { semContato, aniversarios, renovacoes, demandasVencendo, rncRecorrente };
   }
 
 /* ======================================================================
@@ -1851,6 +2061,32 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       if(periodoAtivo) return dentroDoPeriodo(h.data);
       const d=new Date(h.data+'T00:00:00'); return !isNaN(d) && d.getMonth()===mesAtual && d.getFullYear()===anoAtual;
     }).length;
+
+    // Mês anterior (só faz sentido comparar quando NÃO há filtro de período manual ativo) — usado
+    // pra mostrar uma setinha de tendência nos cards, sem precisar guardar histórico de snapshots.
+    const mesAnteriorRef = new Date(anoAtual, mesAtual-1, 1);
+    const mesAnterior = mesAnteriorRef.getMonth(), anoDoMesAnterior = mesAnteriorRef.getFullYear();
+    const clientesNovosMesAnterior = DATA.clientes.filter(c=>{
+      if(!c.competenciaEntrada) return false;
+      const m = String(c.competenciaEntrada).match(/(\d{1,2})\s*\/\s*(\d{4})/);
+      if(!m) return false;
+      const mes = parseInt(m[1],10)-1, ano = parseInt(m[2],10);
+      return mes===mesAnterior && ano===anoDoMesAnterior;
+    }).length;
+    const reunioesMesAnterior = DATA.historico.filter(h=>{
+      if(h.tipo!=='Reunião' || !h.data) return false;
+      const d=new Date(h.data+'T00:00:00'); return !isNaN(d) && d.getMonth()===mesAnterior && d.getFullYear()===anoDoMesAnterior;
+    }).length;
+    // Seta de tendência simples: compara com o mês anterior (só exibida sem filtro de período manual,
+    // já que com filtro ativo o "mês anterior" perde o sentido de comparação direta).
+    function tendencia(atual, anterior){
+      if(periodoAtivo || anterior===0 && atual===0) return '';
+      const diff = atual - anterior;
+      if(diff===0) return '<span style="font-size:.68rem;color:var(--gray1)"> · = que mês passado</span>';
+      const seta = diff>0 ? '▲' : '▼';
+      const cor = diff>0 ? 'var(--green,#5de8a0)' : 'var(--red,#ff8a75)';
+      return ` <span style="font-size:.7rem;color:${cor}">${seta} ${Math.abs(diff)} vs. mês passado</span>`;
+    }
     const onbFiltrado = filteredRows('onb');
     const onbAndamento = onbFiltrado.filter(d=>['procuracoes','documentacao','openBank','certificado','configuracaoNFs'].some(f=>d[f] && d[f]!=='Concluído')).length;
     const carteira = DATA.clientes.filter(c=>c.statusCliente==='Ativo').reduce((s,c)=>s+parseMoneyLike(c.honorario),0);
@@ -1863,6 +2099,11 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     const funil = statusOrder.map(s=>{ const n = comercialFiltrado.filter(d=>d.statusProposta===s).length; return { label:s, n, pct: Math.round(n/totalProp*100) }; });
 
     const propostasEnviadas = comercialFiltrado.length;
+    // Previsão/planejamento: quanto ainda pode virar honorário recorrente se as propostas em aberto
+    // (enviada ou pendente — ainda sem decisão do cliente) forem aceitas. Usa o honorário efetivamente
+    // enviado quando preenchido, senão o calculado pela planilha.
+    const propostasEmAberto = comercialFiltrado.filter(d=>d.statusProposta==='Proposta enviada' || d.statusProposta==='Pendente');
+    const previsaoPipeline = propostasEmAberto.reduce((s,d)=>s+honorarioEfetivoComercial(d),0);
     const fechadoPorCompetencia = {};
     comercialFiltrado.filter(d=>d.statusProposta==='Aceita').forEach(d=>{
       const comp = d.competenciaEntrada || 'Sem competência';
@@ -1871,6 +2112,31 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     const competenciasOrdenadas = Object.keys(fechadoPorCompetencia).sort();
     const maxFechado = Math.max(1, ...competenciasOrdenadas.map(c=>fechadoPorCompetencia[c]));
     const totalFechadoPeriodo = competenciasOrdenadas.reduce((s,c)=>s+fechadoPorCompetencia[c],0);
+
+    // ---- Resultado do setor: indicadores que representam o desempenho do relacionamento como um todo ----
+    const totalClientesRetencao = DATA.clientes.filter(c=>c.statusCliente==='Ativo'||c.statusCliente==='Cancelado').length || 1;
+    const taxaRetencao = Math.round(clientesAtivos/totalClientesRetencao*100);
+
+    let somaIndices = 0, qtdIndices = 0;
+    DATA.clientes.filter(c=>c.statusCliente==='Ativo').forEach(c=>{
+      const rel = getRelacionamento(c.id);
+      const manual = rel && rel.indiceManual!==undefined && rel.indiceManual!=='' ? parseFloat(rel.indiceManual) : null;
+      const idx = manual!==null ? manual : computeIndiceAuto(c.id);
+      if(idx!==null && !isNaN(idx)){ somaIndices += idx; qtdIndices++; }
+    });
+    const indiceMedioCarteira = qtdIndices ? (somaIndices/qtdIndices) : null;
+
+    const conversaoComercial = comercialFiltrado.length>0 ? Math.round(comercialFiltrado.filter(d=>d.statusProposta==='Aceita').length/totalProp*100) : 0;
+
+    const oportunidadesFiltradas = filteredRows('oportunidades');
+    const valorOportunidadesConvertidas = oportunidadesFiltradas.filter(o=>o.status==='Convertida' && o.origem!=='Renegociação de honorário').reduce((s,o)=>s+parseMoneyLike(o.valorEstimado),0);
+
+    const reajustesPeriodo = DATA.reajustes.filter(r=>!periodoAtivo || dentroDoPeriodo(r.data));
+    const ganhoReajustes = reajustesPeriodo.reduce((s,r)=>s+(parseMoneyLike(r.honorarioNovo)-parseMoneyLike(r.honorarioAnterior)),0);
+
+    const rncFiltrado = filteredRows('rnc');
+    const rncPorCliente = clientesAtivos>0 ? (rncFiltrado.length/clientesAtivos) : 0;
+    const multasAssescontFiltrado = rncFiltrado.filter(r=>r.multa && r.multa.startsWith('Sim - paga pela Assescont')).reduce((s,r)=>s+parseMoneyLike(r.valorMulta),0);
 
     const classes = ['A','B','C','D'];
     const totalIdx = DATA.relacionamento.length || 1;
@@ -1881,12 +2147,30 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       ${renderFiltroPeriodo()}
       <div class="summary-cards">
         <div class="sum-card clickable" onclick="switchView('clientes')"><div class="sc-label">Clientes ativos</div><div class="sc-num">${clientesAtivos}</div><div class="sc-sub">de ${DATA.clientes.length} cadastrados</div></div>
-        <div class="sum-card green clickable" onclick="switchView('clientes')"><div class="sc-label">Clientes novos${periodoAtivo?' (período)':' (mês)'}</div><div class="sc-num">${clientesNovos}</div><div class="sc-sub">${periodoAtivo?'contrato assinado no período':'entraram este mês'}</div></div>
-        <div class="sum-card clickable" onclick="switchView('relacionamento')"><div class="sc-label">Reuniões${periodoAtivo?' (período)':' (mês)'}</div><div class="sc-num">${reunioesMes}</div><div class="sc-sub">registradas no histórico</div></div>
+        <div class="sum-card green clickable" onclick="switchView('clientes')"><div class="sc-label">Clientes novos${periodoAtivo?' (período)':' (mês)'}</div><div class="sc-num">${clientesNovos}</div><div class="sc-sub">${periodoAtivo?'contrato assinado no período':'entraram este mês'}${tendencia(clientesNovos, clientesNovosMesAnterior)}</div></div>
+        <div class="sum-card clickable" onclick="switchView('agenda')"><div class="sc-label">Reuniões${periodoAtivo?' (período)':' (mês)'}</div><div class="sc-num">${reunioesMes}</div><div class="sc-sub">registradas no histórico${tendencia(reunioesMes, reunioesMesAnterior)}</div></div>
         <div class="sum-card red clickable" onclick="filtroOnbAndamento()"><div class="sc-label">ONB em andamento</div><div class="sc-num">${onbAndamento}</div><div class="sc-sub">com pendência</div></div>
         <div class="sum-card green clickable" onclick="switchView('clientes')"><div class="sc-label">Carteira (honorários)</div><div class="sc-num">${carteira>0? 'R$ '+carteira.toLocaleString('pt-BR',{maximumFractionDigits:0}) : '—'}</div><div class="sc-sub">soma dos clientes ativos</div></div>
         <div class="sum-card ${totalAlertas>0?'red':''} clickable" onclick="switchView('agenda')"><div class="sc-label">Alertas ativos</div><div class="sc-num">${totalAlertas}</div><div class="sc-sub">sem contato, aniversário, renovação</div></div>
         <div class="sum-card clickable" onclick="switchView('comercial')"><div class="sc-label">Propostas enviadas${periodoAtivo?' (período)':''}</div><div class="sc-num">${propostasEnviadas}</div><div class="sc-sub">${periodoAtivo?'no período selecionado':'total histórico'}</div></div>
+      </div>
+
+      <div class="bars-card" style="margin-bottom:20px">
+        <h3 style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <span>📌 Resultado do setor${periodoAtivo?' — período selecionado':''}</span>
+          <button class="btn btn-ghost" style="font-size:.72rem;padding:5px 10px" onclick="exportarRelatorioExecutivoPdf()" title="PDF consolidado com os destaques de Dashboard, Comercial, Rentabilidade e RNC">📑 Relatório executivo (PDF)</button>
+        </h3>
+        <p style="color:var(--gray2);font-size:.78rem;margin-bottom:12px">Indicadores que representam o desempenho geral do relacionamento com a carteira — não só volume de atividade.</p>
+        <div class="mini-cards">
+          ${miniCardHtml('Taxa de retenção', taxaRetencao+'%', `${clientesAtivos} ativos de ${totalClientesRetencao}`, taxaRetencao>=90?'green':(taxaRetencao>=75?'orange':'red'), 'switchViewClientes')}
+          ${miniCardHtml('Índice médio da carteira', indiceMedioCarteira!==null ? indiceMedioCarteira.toFixed(1) : '—', 'saúde do relacionamento', indiceMedioCarteira!==null ? (indiceMedioCarteira>=7?'green':(indiceMedioCarteira>=4?'orange':'red')) : '', 'switchViewRelacionamento')}
+          ${miniCardHtml('Conversão comercial', conversaoComercial+'%', `${comercialFiltrado.filter(d=>d.statusProposta==='Aceita').length} de ${comercialFiltrado.length} propostas`, conversaoComercial>=40?'green':'', 'switchViewComercial')}
+          ${miniCardHtml('Cross-sell convertido', formatMoneyPlain(valorOportunidadesConvertidas), 'oportunidades no período', valorOportunidadesConvertidas>0?'green':'', 'switchViewOportunidades')}
+          ${miniCardHtml('Ganho com reajustes', (ganhoReajustes>=0?'+':'')+formatMoneyPlain(ganhoReajustes), 'honorário renegociado no período', ganhoReajustes>0?'green':(ganhoReajustes<0?'red':''))}
+          ${miniCardHtml('RNC por cliente ativo', (rncPorCliente*100).toFixed(2)+'%', `${rncFiltrado.length} registro(s) no período`, rncPorCliente<=0.1?'green':(rncPorCliente<=0.3?'orange':'red'), 'switchViewRnc')}
+          ${miniCardHtml('Multas pagas pela Assescont', formatMoneyPlain(multasAssescontFiltrado), 'custo dos erros no período', multasAssescontFiltrado>0?'red':'green', 'switchViewRnc')}
+          ${miniCardHtml('Previsão em propostas (pipeline)', formatMoneyPlain(previsaoPipeline), `${propostasEmAberto.length} proposta(s) em aberto — planejamento`, previsaoPipeline>0?'green':'', 'switchViewComercial')}
+        </div>
       </div>
 
       <div class="bars-card clickable" onclick="switchView('comercial')" style="cursor:pointer">
@@ -1923,13 +2207,18 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
   function renderSectionView(key, sec){
     const importLabel = key==='clientes' ? '📥 Importar clientes (Excel/CSV)' : '📥 Importar por CNPJ (Excel/CSV)';
     let extra = '';
+    let extraRodape = '';
     if(key==='rentabilidade') extra = renderRentabilidadeResumo();
-    if(key==='agenda') extra = renderAgendaAlertas();
+    if(key==='agenda'){ extra = renderAgendaProximosMeses(); extraRodape = renderAgendaAlertas(); }
+    if(key==='oportunidades') extra = renderOportunidadesResumo();
+    if(key==='rnc') extra = renderRncResumo();
+    if(key==='comercial') extra = renderComercialResumo();
     const temFiltroPeriodo = !!DATE_FIELD_MAP[key];
     return `
       <div class="view-title">${sec.icon} ${sec.title} <small>${sec.subtitle||''}</small></div>
       ${temFiltroPeriodo ? renderFiltroPeriodo() : ''}
       ${key==='clientes' ? renderFiltrosClientes() : ''}
+      ${key==='agenda' ? renderFiltrosAgenda() : ''}
       <div class="mini-cards" id="mini-${key}">${renderMiniCards(key)}</div>
       ${extra}
       ${quickFilter.key===key ? `<div style="margin-bottom:14px"><span class="chip chip-teal">Filtro: ${quickFilter.label} <button type="button" onclick="limparFiltroRapido()" style="background:none;border:none;color:inherit;cursor:pointer;margin-left:4px">✕</button></span></div>` : ''}
@@ -1939,8 +2228,10 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         <button class="btn btn-ghost" onclick="document.getElementById('import-file-${key}').click()">${importLabel}</button>
         <input type="file" id="import-file-${key}" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleImportFile(event,'${key}')">
         ${key==='demandas' ? `<button class="btn btn-ghost" onclick="enviarPendenciasTeams()">📨 Enviar pendências ao Teams</button>` : ''}
+        ${key==='demandas' ? `<button class="btn btn-ghost" onclick="toggleMostrarDemandasConcluidas()" title="Demandas concluídas ficam arquivadas (fora da lista) por padrão, pra não poluir o controle">${mostrarDemandasConcluidas ? '📦 Ocultar concluídas' : '📦 Mostrar concluídas'}</button>` : ''}
         ${key==='clientes' ? `<button class="btn btn-ghost" onclick="acionarDeteccaoGruposPorCnpj()" title="Agrupa automaticamente empresas com o mesmo CNPJ raiz (matriz/filial)">🔗 Detectar matriz/filial pelo CNPJ</button>` : ''}
         ${key==='clientes' ? `<button class="btn btn-ghost" id="btn-preencher-cnae" onclick="preencherCnaeEmMassa()" title="Consulta o CNPJ de quem ainda não tem CNAE/endereço preenchido e completa sozinho">🔍 Buscar CNAE/dados faltantes (CNPJ)</button>` : ''}
+        ${key==='rnc' ? `<button class="btn btn-ghost" onclick="openRncMassaModal()" title="Quando o mesmo erro aconteceu com várias empresas, lança de uma vez em vez de empresa por empresa">📋 Lançar RNC em massa</button>` : ''}
         <button class="btn btn-ghost" onclick="exportarExcelSecao('${key}')">📊 Exportar Excel</button>
         <button class="btn btn-ghost" onclick="exportarPdfSecao('${key}')">🧾 Exportar PDF</button>
       </div>
@@ -1951,6 +2242,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
           <tbody id="tbody-${key}"></tbody>
         </table>
       </div>
+      ${extraRodape ? `<div style="margin-top:20px">${extraRodape}</div>` : ''}
     `;
   }
 
@@ -2002,11 +2294,32 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       <div id="bulk-bar-relacionamento" style="margin-bottom:10px"></div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th style="width:32px"><input type="checkbox" onclick="toggleSelecionarTodos('relacionamento', this.checked)" title="Selecionar todos os visíveis"></th><th>Cliente</th><th>Nível</th><th>Status</th><th>Índice</th><th>RNC</th><th>Interações (12m)</th><th>Última interação</th><th>Ações</th></tr></thead>
+          <thead><tr><th style="width:32px"><input type="checkbox" onclick="toggleSelecionarTodos('relacionamento', this.checked)" title="Selecionar todos os visíveis"></th><th style="cursor:pointer;user-select:none" onclick="alternarOrdenacaoRelacionamento('cliente')" title="Ordenar">Cliente${setaOrdenacaoRelacionamento('cliente')}</th><th style="cursor:pointer;user-select:none" onclick="alternarOrdenacaoRelacionamento('nivel')" title="Ordenar">Nível${setaOrdenacaoRelacionamento('nivel')}</th><th style="cursor:pointer;user-select:none" onclick="alternarOrdenacaoRelacionamento('status')" title="Ordenar">Status${setaOrdenacaoRelacionamento('status')}</th><th style="cursor:pointer;user-select:none" onclick="alternarOrdenacaoRelacionamento('indice')" title="Ordenar">Índice${setaOrdenacaoRelacionamento('indice')}</th><th style="cursor:pointer;user-select:none" onclick="alternarOrdenacaoRelacionamento('rnc')" title="Ordenar">RNC${setaOrdenacaoRelacionamento('rnc')}</th><th style="cursor:pointer;user-select:none" onclick="alternarOrdenacaoRelacionamento('inter')" title="Ordenar">Interações (12m)${setaOrdenacaoRelacionamento('inter')}</th><th style="cursor:pointer;user-select:none" onclick="alternarOrdenacaoRelacionamento('ultima')" title="Ordenar">Última interação${setaOrdenacaoRelacionamento('ultima')}</th><th>Ações</th></tr></thead>
           <tbody id="tbody-relacionamento"></tbody>
         </table>
       </div>
     `;
+  }
+
+  let sortRelacionamento = { campo:null, dir:'asc' };
+  function alternarOrdenacaoRelacionamento(campo){
+    if(sortRelacionamento.campo===campo) sortRelacionamento.dir = sortRelacionamento.dir==='asc' ? 'desc' : 'asc';
+    else { sortRelacionamento.campo = campo; sortRelacionamento.dir = 'asc'; }
+    renderRelacionamentoTable();
+  }
+  function setaOrdenacaoRelacionamento(campo){
+    if(sortRelacionamento.campo!==campo) return '';
+    return sortRelacionamento.dir==='desc' ? ' ▼' : ' ▲';
+  }
+  function chaveOrdenacaoRelacionamento(item, campo){
+    if(campo==='cliente') return (item.tipo==='grupo' ? item.grupo : (item.c.razaoSocial||'')).toLowerCase();
+    if(campo==='nivel') return item.m.classif || '';
+    if(campo==='status') return item.m.semaforo || '';
+    if(campo==='indice') return item.m.indice;
+    if(campo==='rnc') return item.m.rnc;
+    if(campo==='inter') return item.m.inter;
+    if(campo==='ultima') return item.m.ultima || '';
+    return '';
   }
 
   function renderRelacionamentoTable(filterText){
@@ -2037,13 +2350,44 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       else individuais.push(c);
     });
 
-    let html = '';
+    const itens = [];
     Object.keys(porGrupo).sort().forEach(g=>{
       const membros = porGrupo[g];
       if(membros.length === 1){ individuais.push(membros[0]); return; }
-      html += renderGrupoRelacionamentoRow(g, membros);
+      const metricas = membros.map(c=>metricasRelacionamentoCliente(c));
+      const ultimasGrupo = metricas.map(x=>x.ultima).filter(Boolean).sort();
+      itens.push({
+        tipo:'grupo', grupo:g, membros,
+        m: {
+          classif: metricas[0].rel.classificacao,
+          semaforo: metricas[0].rel.semaforo,
+          indice: metricas[0].final,
+          rnc: metricas.reduce((s,x)=>s+x.rncCount,0),
+          inter: metricas.reduce((s,x)=>s+x.inter,0),
+          ultima: ultimasGrupo.length ? ultimasGrupo[ultimasGrupo.length-1] : null
+        }
+      });
     });
-    individuais.forEach(c=>{ html += renderClienteRelacionamentoRow(c); });
+    individuais.forEach(c=>{
+      const m = metricasRelacionamentoCliente(c);
+      itens.push({ tipo:'individual', c, m: { classif:m.rel.classificacao, semaforo:m.rel.semaforo, indice:m.final, rnc:m.rncCount, inter:m.inter, ultima:m.ultima } });
+    });
+
+    if(sortRelacionamento.campo){
+      itens.sort((a,b)=>{
+        const va = chaveOrdenacaoRelacionamento(a, sortRelacionamento.campo);
+        const vb = chaveOrdenacaoRelacionamento(b, sortRelacionamento.campo);
+        let cmp;
+        if(typeof va === 'number' && typeof vb === 'number') cmp = va-vb;
+        else cmp = String(va).localeCompare(String(vb), 'pt-BR');
+        return sortRelacionamento.dir==='asc' ? cmp : -cmp;
+      });
+    }
+
+    let html = '';
+    itens.forEach(item=>{
+      html += item.tipo==='grupo' ? renderGrupoRelacionamentoRow(item.grupo, item.membros) : renderClienteRelacionamentoRow(item.c);
+    });
 
     tbody.innerHTML = html || `<tr class="empty-row"><td colspan="9">Nenhum resultado para essa busca.</td></tr>`;
     atualizarBarraSelecaoMassa('relacionamento');
@@ -2390,32 +2734,413 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
   function openClienteView(clienteId){
     const c = getCliente(clienteId);
     if(!c) return;
-    document.getElementById('cliente-view-title').textContent = c.razaoSocial || 'Cliente';
-    const linha = (label, val) => `<div class="info-card" style="padding:10px 14px;margin-bottom:8px;display:flex;justify-content:space-between;gap:10px"><span style="color:var(--gray1);font-size:.75rem">${label}</span><span style="color:var(--white);font-size:.85rem;font-weight:500;text-align:right">${val && val!=='' ? val : '—'}</span></div>`;
+    document.getElementById('cliente-view-title').textContent = '📋 Resumo — ' + (c.razaoSocial || 'Cliente');
+    const linha = (label, val) => `<div style="padding:6px 0;display:flex;justify-content:space-between;gap:10px;border-bottom:1px solid rgba(217,184,150,0.08)"><span style="color:var(--gray1);font-size:.74rem">${label}</span><span style="color:var(--white);font-size:.82rem;font-weight:500;text-align:right">${(val || val===0) && val!=='' ? val : '—'}</span></div>`;
+    const bloco = (titulo, conteudoHtml) => `<div class="info-card" style="padding:10px 14px;margin-bottom:10px"><div style="font-size:.78rem;font-weight:600;color:var(--gold,var(--white));margin-bottom:4px">${titulo}</div>${conteudoHtml}</div>`;
+
+    // Grupo (matriz/filial): RNC, Oportunidades e Demandas normalmente são específicos de cada CNPJ
+    // (cada empresa responde por si mesma), então mostramos o número da empresa clicada E o total do
+    // grupo inteiro lado a lado — assim não some a visão consolidada nem mistura empresas diferentes.
+    const idsGrupo = idsDoGrupo(clienteId);
+    const ehGrupo = idsGrupo.length > 1;
+    const membrosGrupo = ehGrupo ? DATA.clientes.filter(x=>idsGrupo.includes(x.id)) : [];
+    const blocoGrupo = ehGrupo ? bloco('🏢 Grupo: '+c.grupo+' ('+idsGrupo.length+' empresas)', `
+      <div style="font-size:.78rem;color:var(--gray2);margin-bottom:4px">Os blocos abaixo mostram o número desta empresa e, entre parênteses, o total do grupo inteiro.</div>
+      <div style="max-height:110px;overflow-y:auto;margin-top:6px">
+        ${membrosGrupo.map(m=>`<div style="padding:3px 0;font-size:.78rem;${m.id===clienteId?'font-weight:600':'cursor:pointer;color:var(--teal-light)'}" ${m.id===clienteId?'':`onclick="openClienteView('${m.id}')"`}>${m.id===clienteId?'▸ ':''}${m.razaoSocial}${m.id===clienteId?' (esta)':''}</div>`).join('')}
+      </div>
+    `) : '';
+
+    // Relacionamento — já é compartilhado por todo o grupo (mesma chave), sem mudança necessária
+    const rel = getRelacionamento(clienteId);
+    const inter = interacoes12m(clienteId);
+    const ultima = ultimaInteracaoData(clienteId);
+    const indiceAuto = computeIndiceAuto(clienteId);
+    const indiceFinal = (rel && rel.indiceManual!==undefined && rel.indiceManual!=='') ? parseFloat(rel.indiceManual) : indiceAuto;
+    const blocoRelacionamento = bloco('🤝 Relacionamento'+(ehGrupo?' (compartilhado pelo grupo)':''), `
+      ${linha('Nível', rel && rel.classificacao ? rel.classificacao : null)}
+      ${linha('Status', rel && rel.semaforo ? rel.semaforo : null)}
+      ${linha('Índice', indiceFinal!==null && indiceFinal!==undefined ? indiceFinal.toFixed(1) : null)}
+      ${linha('Interações (12m)', inter)}
+      ${linha('Última interação', ultima ? new Date(ultima+'T00:00:00').toLocaleDateString('pt-BR') : null)}
+    `);
+
+    // RNC — desta empresa (+ total do grupo, se houver)
+    const rncsEmpresa = DATA.rnc.filter(r=>r.clienteId===clienteId);
+    const rncsGrupo = ehGrupo ? DATA.rnc.filter(r=>idsGrupo.includes(r.clienteId)) : rncsEmpresa;
+    const rncGraves = rncsEmpresa.filter(r=>r.classificacaoErro==='Grave').length;
+    const rncComMulta = rncsEmpresa.filter(r=>r.multa && r.multa.startsWith('Sim')).length;
+    const rncRecente = [...rncsEmpresa].sort((a,b)=>(b.data||'').localeCompare(a.data||''))[0];
+    const sufixoGrupo = (valorEmpresa, valorGrupo) => ehGrupo ? `${valorEmpresa} <span style="color:var(--gray1);font-size:.7rem">(grupo: ${valorGrupo})</span>` : valorEmpresa;
+    const blocoRnc = bloco('⚠️ RNC — Não conformidades', `
+      ${linha('Total registrado', sufixoGrupo(rncsEmpresa.length, rncsGrupo.length))}
+      ${linha('Graves', rncGraves)}
+      ${linha('Com multa', rncComMulta)}
+      ${linha('Mais recente', rncRecente ? (rncRecente.data ? new Date(rncRecente.data+'T00:00:00').toLocaleDateString('pt-BR')+' — ' : '')+(rncRecente.setor||'') : null)}
+    `);
+
+    // Oportunidades — desta empresa (+ total do grupo, se houver)
+    const oportunidadesEmpresa = DATA.oportunidades.filter(o=>o.clienteId===clienteId);
+    const oportunidadesGrupo = ehGrupo ? DATA.oportunidades.filter(o=>idsGrupo.includes(o.clienteId)) : oportunidadesEmpresa;
+    const oportAbertas = oportunidadesEmpresa.filter(o=>o.status==='Identificada'||o.status==='Em andamento');
+    const oportConvertidasCrossSell = oportunidadesEmpresa.filter(o=>o.status==='Convertida' && o.origem!=='Renegociação de honorário');
+    const oportConvertidasTotal = oportunidadesEmpresa.filter(o=>o.status==='Convertida').length;
+    const valorCrossSellConvertido = oportConvertidasCrossSell.reduce((s,o)=>s+parseMoneyLike(o.valorEstimado),0);
+    const blocoOportunidades = bloco('🎯 Oportunidades', `
+      ${linha('Total identificadas', sufixoGrupo(oportunidadesEmpresa.length, oportunidadesGrupo.length))}
+      ${linha('Em aberto', oportAbertas.length)}
+      ${linha('Convertidas', oportConvertidasTotal)}
+      ${linha('Valor de cross-sell convertido (R$)', valorCrossSellConvertido>0 ? formatMoney(valorCrossSellConvertido) : null)}
+      ${oportAbertas.length ? '<div style="margin-top:6px;font-size:.74rem;color:var(--gray2)">'+oportAbertas.slice(0,3).map(o=>'• '+o.oportunidade).join('<br>')+'</div>' : ''}
+      <p style="color:var(--gray1);font-size:.68rem;margin-top:6px">Não inclui negociação de honorário (essa conta no bloco de Honorário abaixo).</p>
+    `);
+
+    // Histórico de honorário — resumo aqui, com atalho pro histórico completo (mesmo modal do botão 💰)
+    const historicoHonorarioCliente = DATA.historicoHonorario.filter(h=>h.clienteId===clienteId).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+    const ultimaMudancaHonorario = historicoHonorarioCliente[0];
+    const blocoHonorario = bloco('💰 Honorário', `
+      ${linha('Honorário atual', c.honorario ? formatMoney(c.honorario) : null)}
+      ${linha('Alterações registradas', historicoHonorarioCliente.length)}
+      ${ultimaMudancaHonorario ? linha('Última mudança', formatMoneyPlain(ultimaMudancaHonorario.valorAnterior)+' → '+formatMoneyPlain(ultimaMudancaHonorario.valorNovo)+' ('+new Date(ultimaMudancaHonorario.data+'T00:00:00').toLocaleDateString('pt-BR')+' — '+ultimaMudancaHonorario.origem+')') : ''}
+      <button class="btn btn-ghost" style="margin-top:8px;padding:5px 10px;font-size:.75rem" onclick="abrirHistoricoHonorario('${clienteId}')">Ver histórico completo</button>
+    `);
+
+    // Rentabilidade e Comercial são inerentemente por CNPJ (cada empresa tem seu próprio honorário/proposta) —
+    // continuam mostrando só os dados desta empresa, mesmo quando ela faz parte de um grupo.
+    const rentRegs = DATA.rentabilidade.filter(r=>r.clienteId===clienteId).sort((a,b)=>(b.competencia||'').localeCompare(a.competencia||''));
+    const rentUltima = rentRegs[0];
+    let blocoRentabilidade;
+    if(rentUltima){
+      const honorarioAtual = parseMoneyLike(c.honorario);
+      const custoEstimado = parseNum(rentUltima.horasGastas)*VALOR_HORA;
+      const diferenca = custoEstimado>0 ? honorarioAtual - custoEstimado : null;
+      blocoRentabilidade = bloco('📈 Rentabilidade (última competência: '+(rentUltima.competencia||'—')+')', `
+        ${linha('Faturamento atual', rentUltima.faturamentoAtual ? formatMoney(rentUltima.faturamentoAtual) : null)}
+        ${linha('Horas orçadas x gastas', (rentUltima.horasOrcadas||'—')+' x '+(rentUltima.horasGastas||'—'))}
+        ${linha('Diferença honorário x custo estimado', diferenca!==null ? formatMoney(diferenca) : null)}
+      `);
+    } else {
+      blocoRentabilidade = bloco('📈 Rentabilidade', '<div style="color:var(--gray1);font-size:.78rem">Nenhuma competência lançada ainda.</div>');
+    }
+
+    // Demandas — desta empresa (+ total do grupo, se houver)
+    const demandasPendentesEmpresa = DATA.demandas.filter(d=>d.clienteId===clienteId && d.status!=='Finalizado');
+    const demandasPendentesGrupo = ehGrupo ? DATA.demandas.filter(d=>idsGrupo.includes(d.clienteId) && d.status!=='Finalizado') : demandasPendentesEmpresa;
+    const blocoDemandas = bloco('📋 Demandas em aberto'+(ehGrupo?' — '+sufixoGrupo(demandasPendentesEmpresa.length, demandasPendentesGrupo.length):''), demandasPendentesEmpresa.length ?
+      demandasPendentesEmpresa.slice(0,4).map(d=>`<div style="font-size:.78rem;padding:3px 0">• ${(d.demanda||'').slice(0,70)}${(d.demanda||'').length>70?'…':''} <span style="color:var(--gray1)">(${d.status||'Pendente'})</span></div>`).join('')
+      : '<div style="color:var(--gray1);font-size:.78rem">Nenhuma demanda em aberto para esta empresa.</div>');
+
+    // Comercial — proposta mais recente desta empresa
+    const comercialReg = DATA.comercial.filter(cm=>cm.clienteId===clienteId).sort((a,b)=>(b.numeroProposta||'').localeCompare(a.numeroProposta||''))[0];
+    const blocoComercial = bloco('💼 Comercial', comercialReg ?
+      linha('Status da proposta', comercialReg.statusProposta) + linha('Honorário calculado', comercialReg.honorarioCalculado ? formatMoney(comercialReg.honorarioCalculado) : null)
+      : '<div style="color:var(--gray1);font-size:.78rem">Nenhuma proposta registrada.</div>');
+
     document.getElementById('cliente-view-body').innerHTML = `
-      <p style="color:var(--gray1);font-size:.72rem;margin-bottom:10px">${c.cnpj||''}${c.grupo?' · Grupo: '+c.grupo:''}</p>
-      ${linha('Faturamento', c.faturamento ? formatMoney(c.faturamento) : null)}
-      ${linha('Nº de funcionários', c.funcionarios)}
-      ${linha('Regime tributário', c.regime)}
-      ${linha('CNAE principal', c.cnaePrincipal)}
-      ${linha('Rua/Av.', c.logradouro)}
-      ${linha('Número', c.numeroEndereco)}
-      ${linha('Complemento', c.complemento)}
-      ${linha('Bairro', c.bairro)}
-      ${linha('CEP', c.cep)}
-      ${linha('Cidade', c.cidade)}
-      ${linha('Estado', c.estado)}
-      ${linha('Status', c.statusCliente)}
+      ${bloco('🏢 Dados cadastrais', `
+        <p style="color:var(--gray1);font-size:.72rem;margin-bottom:6px">${c.cnpj||''}${c.grupo?' · Grupo: '+c.grupo:''}</p>
+        ${linha('Status', c.statusCliente)}
+        ${linha('Regime tributário', c.regime)}
+        ${linha('Divisão', divisaoDoCliente(c))}
+        ${linha('CNAE principal', c.cnaePrincipal)}
+        ${linha('Honorário', c.honorario ? formatMoney(c.honorario) : null)}
+        ${linha('Faturamento', c.faturamento ? formatMoney(c.faturamento) : null)}
+        ${linha('Nº de funcionários', c.funcionarios)}
+        ${linha('Cidade/UF', (c.cidade||'')+(c.estado?'/'+c.estado:''))}
+      `)}
+      ${blocoGrupo}
+      ${blocoRelacionamento}
+      ${blocoRnc}
+      ${blocoOportunidades}
+      ${blocoHonorario}
+      ${blocoRentabilidade}
+      ${blocoDemandas}
+      ${blocoComercial}
     `;
     document.getElementById('cliente-view-edit-btn').onclick = function(){
       closeClienteView();
       switchView('clientes');
       openModal('clientes', clienteId);
     };
+    document.getElementById('cliente-view-pdf-btn').onclick = function(){ exportarResumoClientePdf(clienteId); };
     document.getElementById('modal-cliente-view').classList.add('open');
   }
   function closeClienteView(){
     document.getElementById('modal-cliente-view').classList.remove('open');
+  }
+
+  // Relatório executivo mensal: consolida os destaques de Dashboard, Comercial, Rentabilidade e RNC
+  // num PDF só, pronto pra levar numa reunião de diretoria, sem precisar exportar aba por aba.
+  function exportarRelatorioExecutivoPdf(){
+    try{
+      if(typeof jspdf === 'undefined'){ alert('Não consegui carregar o gerador de PDF agora. Verifique sua conexão e tente de novo.'); return; }
+      const doc = new jspdf.jsPDF();
+      const corMarca = [225,181,128];
+      const corGrafite = [35,36,34];
+      const larguraPagina = doc.internal.pageSize.getWidth();
+      const margemEsq = 15, margemDir = 15;
+      const larguraUtil = larguraPagina - margemEsq - margemDir;
+
+      const alturaFaixa = 30;
+      doc.setFillColor(corGrafite[0],corGrafite[1],corGrafite[2]);
+      doc.rect(0, 0, larguraPagina, alturaFaixa, 'F');
+      try{ doc.addImage(LOGO_SRC, 'PNG', margemEsq, 7, 16, 16); }catch(e){}
+      doc.setFont('helvetica','bold'); doc.setFontSize(15); doc.setTextColor(255,255,255);
+      doc.text('RELATÓRIO EXECUTIVO MENSAL', margemEsq+20, 15);
+      doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(corMarca[0],corMarca[1],corMarca[2]);
+      const agora = new Date();
+      doc.text('Assescont · ' + agora.toLocaleDateString('pt-BR') + ' às ' + agora.toLocaleTimeString('pt-BR').slice(0,5), margemEsq+20, 22);
+
+      let y = alturaFaixa + 10;
+      const pularPagina = (h) => { if(y+h>282){ doc.addPage(); y=18; } };
+      const secao = (titulo) => {
+        pularPagina(14);
+        doc.setFillColor(corMarca[0],corMarca[1],corMarca[2]);
+        doc.rect(margemEsq, y, larguraUtil, 6.5, 'F');
+        doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(45,35,25);
+        doc.text(titulo, margemEsq+3, y+4.6);
+        y += 6.5+3;
+        doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(40,40,40);
+      };
+      const campo = (label, val) => {
+        pularPagina(6);
+        doc.setFont('helvetica','bold'); doc.setTextColor(90,90,90);
+        doc.text(sanitizarTextoPdf(label), margemEsq, y);
+        doc.setFont('helvetica','normal'); doc.setTextColor(30,30,30);
+        doc.text(sanitizarTextoPdf(String(val)), margemEsq+85, y);
+        y += 6;
+      };
+
+      const clientesAtivos = DATA.clientes.filter(c=>c.statusCliente==='Ativo').length;
+      const totalClientesRetencao = DATA.clientes.filter(c=>c.statusCliente==='Ativo'||c.statusCliente==='Cancelado').length || 1;
+      const taxaRetencao = Math.round(clientesAtivos/totalClientesRetencao*100);
+      let somaIndices=0, qtdIndices=0;
+      DATA.clientes.filter(c=>c.statusCliente==='Ativo').forEach(c=>{
+        const rel = getRelacionamento(c.id);
+        const manual = rel && rel.indiceManual!==undefined && rel.indiceManual!=='' ? parseFloat(rel.indiceManual) : null;
+        const idx = manual!==null ? manual : computeIndiceAuto(c.id);
+        if(idx!==null && !isNaN(idx)){ somaIndices+=idx; qtdIndices++; }
+      });
+      const indiceMedio = qtdIndices ? somaIndices/qtdIndices : null;
+      const carteira = DATA.clientes.filter(c=>c.statusCliente==='Ativo').reduce((s,c)=>s+parseMoneyLike(c.honorario),0);
+
+      secao('Carteira e relacionamento');
+      campo('Clientes ativos', clientesAtivos);
+      campo('Taxa de retenção', taxaRetencao+'%');
+      campo('Índice médio da carteira', indiceMedio!==null ? indiceMedio.toFixed(1) : '—');
+      campo('Carteira (honorários/mês)', formatMoneyPlain(carteira));
+
+      const emAberto = DATA.comercial.filter(d=>d.statusProposta==='Proposta enviada'||d.statusProposta==='Pendente');
+      const previsaoPipeline = emAberto.reduce((s,d)=>s+honorarioEfetivoComercial(d),0);
+      const aceitas = DATA.comercial.filter(d=>d.statusProposta==='Aceita');
+      const totalFechado = aceitas.reduce((s,d)=>s+honorarioEfetivoComercial(d),0);
+      secao('Comercial');
+      campo('Propostas em aberto', emAberto.length);
+      campo('Previsão em pipeline', formatMoneyPlain(previsaoPipeline));
+      campo('Já fechado (histórico)', formatMoneyPlain(totalFechado));
+
+      const colaboradores = parseNum(DATA.configColaboradoresOperacionais);
+      const capacidadeTotal = colaboradores*220;
+      const horasGastasTotal = DATA.rentabilidade.reduce((s,r)=>s+parseNum(r.horasGastas),0);
+      secao('Rentabilidade e capacidade operacional');
+      campo('Colaboradores operacionais', colaboradores || '—');
+      campo('Capacidade total', capacidadeTotal.toLocaleString('pt-BR')+' HH');
+      campo('Horas gastas (Domínio)', horasGastasTotal.toLocaleString('pt-BR')+' HH');
+      campo('Horas disponíveis', (capacidadeTotal-horasGastasTotal).toLocaleString('pt-BR')+' HH');
+
+      const multasAssescont = DATA.rnc.filter(r=>r.multa && r.multa.startsWith('Sim - paga pela Assescont')).reduce((s,r)=>s+parseMoneyLike(r.valorMulta),0);
+      const rncPorCliente = clientesAtivos>0 ? DATA.rnc.length/clientesAtivos : 0;
+      secao('RNC - Não conformidades');
+      campo('Total registrado', DATA.rnc.length);
+      campo('Índice RNC/cliente ativo', (rncPorCliente*100).toFixed(2)+'%');
+      campo('Multas pagas pela Assescont', formatMoneyPlain(multasAssescont));
+
+      const totalPaginas = doc.internal.getNumberOfPages();
+      for(let i=1;i<=totalPaginas;i++){
+        doc.setPage(i);
+        doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(corMarca[0],corMarca[1],corMarca[2]);
+        doc.text('CONFIDENCIAL — USO INTERNO', margemEsq, 292);
+        doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(150,150,150);
+        doc.text('Gerado pelo CRM Assescont em '+new Date().toLocaleDateString('pt-BR')+' — Página '+i+' de '+totalPaginas, larguraPagina-margemDir, 292, {align:'right'});
+      }
+
+      doc.save('Relatorio_Executivo_'+new Date().toISOString().slice(0,7)+'.pdf');
+    }catch(e){
+      console.error('Erro ao exportar relatório executivo', e);
+      alert('Não consegui gerar o PDF do relatório executivo. Tente novamente.');
+    }
+  }
+
+  function exportarResumoClientePdf(clienteId){
+    try{
+      if(typeof jspdf === 'undefined'){ alert('Não consegui carregar o gerador de PDF agora. Verifique sua conexão e tente de novo.'); return; }
+      const c = getCliente(clienteId);
+      if(!c) return;
+      const doc = new jspdf.jsPDF();
+      const corMarca = [225,181,128];   // dourado da identidade visual Assescont
+      const corGrafite = [35,36,34];    // grafite escuro da identidade visual Assescont
+      const larguraPagina = doc.internal.pageSize.getWidth();
+      const margemEsq = 15, margemDir = 15;
+      const larguraUtil = larguraPagina - margemEsq - margemDir;
+      const labelW = 62; // largura reservada pro rótulo antes do valor
+
+      // Faixa escura formal no topo (mesmo padrão visual da logo/identidade da Assescont), com o nome
+      // do cliente em destaque — dá um ar de "capa"/carta timbrada em vez de um relatório genérico.
+      const alturaFaixa = 34;
+      doc.setFillColor(corGrafite[0],corGrafite[1],corGrafite[2]);
+      doc.rect(0, 0, larguraPagina, alturaFaixa, 'F');
+      try{ doc.addImage(LOGO_SRC, 'PNG', margemEsq, 8, 16, 16); }catch(e){}
+      doc.setFont('helvetica','bold'); doc.setFontSize(16); doc.setTextColor(255,255,255);
+      doc.text('RESUMO DO CLIENTE', margemEsq+20, 15);
+      doc.setFont('helvetica','normal'); doc.setFontSize(10); doc.setTextColor(corMarca[0],corMarca[1],corMarca[2]);
+      const nomeQuebrado = doc.splitTextToSize(sanitizarTextoPdf(c.razaoSocial||''), larguraUtil-20);
+      doc.text(nomeQuebrado, margemEsq+20, 22);
+
+      let y = alturaFaixa + 10;
+
+      const pularPagina = (h) => {
+        if(y+h>282){ doc.addPage(); y=18; }
+      };
+      // Cabeçalho de seção com fundo dourado (identidade visual) — evita ficar "órfão" sozinho no fim da página.
+      const secao = (titulo) => {
+        pularPagina(14);
+        doc.setFillColor(corMarca[0],corMarca[1],corMarca[2]);
+        doc.rect(margemEsq, y, larguraUtil, 6.5, 'F');
+        doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(45,35,25);
+        doc.text(titulo, margemEsq+3, y+4.6);
+        y += 6.5+3;
+        doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(40,40,40);
+      };
+      // Uma linha rótulo: valor, com quebra de texto e sem depender de caracteres fora do padrão Latin/WinAnsi
+      // (jsPDF com fonte padrão não desenha certos símbolos Unicode corretamente — só ASCII/acentuação comum).
+      const campo = (label, val) => {
+        const texto = (val!==null && val!==undefined && val!=='') ? sanitizarTextoPdf(val) : '\u2014';
+        const linhas = doc.splitTextToSize(texto, larguraUtil-labelW);
+        pularPagina(linhas.length*4.6+1.5);
+        doc.setFont('helvetica','bold'); doc.setTextColor(90,90,90);
+        doc.text(sanitizarTextoPdf(label), margemEsq, y);
+        doc.setFont('helvetica','normal'); doc.setTextColor(30,30,30);
+        doc.text(linhas, margemEsq+labelW, y);
+        y += linhas.length*4.6+1.5;
+      };
+      // Item de lista simples (bullet ASCII, seguro em qualquer fonte), com quebra de texto.
+      const itemLista = (texto, destaque) => {
+        const prefixo = destaque ? '>> ' : ' - ';
+        const linhas = doc.splitTextToSize(prefixo+sanitizarTextoPdf(texto), larguraUtil-4);
+        pularPagina(linhas.length*4.4+0.5);
+        if(destaque){ doc.setFont('helvetica','bold'); doc.setTextColor(120,80,50); }
+        else { doc.setFont('helvetica','normal'); doc.setTextColor(60,60,60); }
+        doc.text(linhas, margemEsq+2, y);
+        y += linhas.length*4.4+0.5;
+        doc.setFont('helvetica','normal'); doc.setTextColor(30,30,30);
+      };
+
+      const idsGrupo = idsDoGrupo(clienteId);
+      const ehGrupo = idsGrupo.length > 1;
+      const comGrupo = (valorEmpresa, valorGrupo) => ehGrupo ? `${valorEmpresa} (grupo: ${valorGrupo})` : String(valorEmpresa);
+
+      secao('Dados cadastrais');
+      campo('CNPJ', c.cnpj);
+      campo('Grupo', c.grupo);
+      campo('Status', c.statusCliente);
+      campo('Regime tributário', c.regime);
+      campo('Divisão', divisaoDoCliente(c));
+      campo('CNAE principal', c.cnaePrincipal);
+      campo('Honorário', c.honorario ? formatMoneyPlain(c.honorario) : null);
+      campo('Faturamento', c.faturamento ? formatMoneyPlain(c.faturamento) : null);
+      campo('Nº de funcionários', c.funcionarios);
+      campo('Cidade/UF', (c.cidade||'')+(c.estado?'/'+c.estado:''));
+
+      if(ehGrupo){
+        const membros = DATA.clientes.filter(x=>idsGrupo.includes(x.id));
+        secao('Empresas do grupo ('+idsGrupo.length+')');
+        // Grupos grandes viram uma parede de texto — mostra a empresa atual sempre, e limita o resto
+        // a 14 nomes com um aviso de quantas ficaram de fora, em vez de listar todas sem critério.
+        const atual = membros.find(m=>m.id===clienteId);
+        const outras = membros.filter(m=>m.id!==clienteId);
+        if(atual) itemLista(atual.razaoSocial+' (esta empresa)', true);
+        const LIMITE_LISTA = 14;
+        outras.slice(0,LIMITE_LISTA).forEach(m=>itemLista(m.razaoSocial));
+        if(outras.length>LIMITE_LISTA) itemLista('... e mais '+(outras.length-LIMITE_LISTA)+' empresa(s) do grupo (veja a lista completa na aba Clientes, filtrando pelo grupo "'+c.grupo+'").');
+      }
+
+      const rel = getRelacionamento(clienteId);
+      const inter = interacoes12m(clienteId);
+      const ultima = ultimaInteracaoData(clienteId);
+      const indiceAuto = computeIndiceAuto(clienteId);
+      const indiceFinal = (rel && rel.indiceManual!==undefined && rel.indiceManual!=='') ? parseFloat(rel.indiceManual) : indiceAuto;
+      secao('Relacionamento'+(ehGrupo?' (compartilhado pelo grupo)':''));
+      campo('Nível', rel && rel.classificacao);
+      campo('Status', rel && rel.semaforo);
+      campo('Índice', indiceFinal!==null && indiceFinal!==undefined ? indiceFinal.toFixed(1) : null);
+      campo('Interações (12m)', inter);
+      campo('Última interação', ultima ? new Date(ultima+'T00:00:00').toLocaleDateString('pt-BR') : null);
+
+      const rncsEmpresa = DATA.rnc.filter(r=>r.clienteId===clienteId);
+      const rncsGrupo = ehGrupo ? DATA.rnc.filter(r=>idsGrupo.includes(r.clienteId)) : rncsEmpresa;
+      const rncRecente = [...rncsEmpresa].sort((a,b)=>(b.data||'').localeCompare(a.data||''))[0];
+      secao('RNC - Não conformidades');
+      campo('Total registrado', comGrupo(rncsEmpresa.length, rncsGrupo.length));
+      campo('Graves', rncsEmpresa.filter(r=>r.classificacaoErro==='Grave').length);
+      campo('Com multa', rncsEmpresa.filter(r=>r.multa && r.multa.startsWith('Sim')).length);
+      campo('Mais recente', rncRecente ? (rncRecente.data ? new Date(rncRecente.data+'T00:00:00').toLocaleDateString('pt-BR')+' - ' : '')+(rncRecente.setor||'') : null);
+
+      const oportunidadesEmpresa = DATA.oportunidades.filter(o=>o.clienteId===clienteId);
+      const oportunidadesGrupo = ehGrupo ? DATA.oportunidades.filter(o=>idsGrupo.includes(o.clienteId)) : oportunidadesEmpresa;
+      const oportAbertas = oportunidadesEmpresa.filter(o=>o.status==='Identificada'||o.status==='Em andamento');
+      const valorCrossSellConvertidoPdf = oportunidadesEmpresa.filter(o=>o.status==='Convertida' && o.origem!=='Renegociação de honorário').reduce((s,o)=>s+parseMoneyLike(o.valorEstimado),0);
+      secao('Oportunidades');
+      campo('Total identificadas', comGrupo(oportunidadesEmpresa.length, oportunidadesGrupo.length));
+      campo('Em aberto', oportAbertas.length);
+      campo('Convertidas', oportunidadesEmpresa.filter(o=>o.status==='Convertida').length);
+      campo('Cross-sell convertido (R$)', valorCrossSellConvertidoPdf>0 ? formatMoneyPlain(valorCrossSellConvertidoPdf) : null);
+      oportAbertas.slice(0,4).forEach(o=>itemLista(o.oportunidade));
+
+      const historicoHonorarioPdf = DATA.historicoHonorario.filter(h=>h.clienteId===clienteId).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+      const ultimaMudancaHonorarioPdf = historicoHonorarioPdf[0];
+      secao('Honorário');
+      campo('Honorário atual', c.honorario ? formatMoneyPlain(c.honorario) : null);
+      campo('Alterações registradas', historicoHonorarioPdf.length);
+      if(ultimaMudancaHonorarioPdf) campo('Última mudança', formatMoneyPlain(ultimaMudancaHonorarioPdf.valorAnterior)+' -> '+formatMoneyPlain(ultimaMudancaHonorarioPdf.valorNovo)+' ('+new Date(ultimaMudancaHonorarioPdf.data+'T00:00:00').toLocaleDateString('pt-BR')+' - '+ultimaMudancaHonorarioPdf.origem+')');
+
+      const rentRegs = DATA.rentabilidade.filter(r=>r.clienteId===clienteId).sort((a,b)=>(b.competencia||'').localeCompare(a.competencia||''));
+      const rentUltima = rentRegs[0];
+      secao('Rentabilidade' + (rentUltima ? ' (competência '+(rentUltima.competencia||'-')+')' : '') + (ehGrupo?' - desta empresa':''));
+      if(rentUltima){
+        const honorarioAtual = parseMoneyLike(c.honorario);
+        const custoEstimado = parseNum(rentUltima.horasGastas)*VALOR_HORA;
+        campo('Faturamento atual', rentUltima.faturamentoAtual ? formatMoneyPlain(rentUltima.faturamentoAtual) : null);
+        campo('Horas orçadas x gastas', (rentUltima.horasOrcadas||'-')+' x '+(rentUltima.horasGastas||'-'));
+        campo('Diferença honorário x custo estimado', custoEstimado>0 ? formatMoneyPlain(honorarioAtual-custoEstimado) : null);
+      } else {
+        campo('Situação', 'Nenhuma competência lançada ainda.');
+      }
+
+      const demandasPendentesEmpresa = DATA.demandas.filter(d=>d.clienteId===clienteId && d.status!=='Finalizado');
+      const demandasPendentesGrupo = ehGrupo ? DATA.demandas.filter(d=>idsGrupo.includes(d.clienteId) && d.status!=='Finalizado') : demandasPendentesEmpresa;
+      secao('Demandas em aberto'+(ehGrupo?' - '+comGrupo(demandasPendentesEmpresa.length, demandasPendentesGrupo.length):''));
+      if(demandasPendentesEmpresa.length===0) campo('Situação', 'Nenhuma demanda em aberto para esta empresa.');
+      else demandasPendentesEmpresa.slice(0,6).forEach(d=>itemLista((d.demanda||'').slice(0,90)+' ('+(d.status||'Pendente')+')'));
+
+      const comercialReg = DATA.comercial.filter(cm=>cm.clienteId===clienteId).sort((a,b)=>(b.numeroProposta||'').localeCompare(a.numeroProposta||''))[0];
+      secao('Comercial'+(ehGrupo?' (desta empresa)':''));
+      campo('Status da proposta', comercialReg && comercialReg.statusProposta);
+      campo('Honorário calculado', comercialReg && comercialReg.honorarioCalculado ? formatMoneyPlain(comercialReg.honorarioCalculado) : null);
+
+      const totalPaginas = doc.internal.getNumberOfPages();
+      for(let i=1;i<=totalPaginas;i++){
+        doc.setPage(i);
+        doc.setFont('helvetica','bold'); doc.setFontSize(7); doc.setTextColor(corMarca[0],corMarca[1],corMarca[2]);
+        doc.text('CONFIDENCIAL — USO INTERNO', margemEsq, 292);
+        doc.setFont('helvetica','normal'); doc.setFontSize(7); doc.setTextColor(150,150,150);
+        doc.text('Gerado pelo CRM Assescont em '+new Date().toLocaleDateString('pt-BR')+' — Página '+i+' de '+totalPaginas, larguraPagina-margemDir, 292, {align:'right'});
+      }
+
+      doc.save('Resumo_'+(c.razaoSocial||'cliente').replace(/[^\w]+/g,'_')+'.pdf');
+    }catch(e){
+      console.error('Erro ao exportar resumo do cliente', e);
+      alert('Não consegui gerar o PDF. Tente novamente.');
+    }
   }
 
   function openHistoricoModal(clienteId){
@@ -2479,6 +3204,189 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
 
   /* ---------- Histórico de reajustes de honorário (por cliente) ---------- */
   let reajusteClienteAtual = null;
+
+  // Log de TODA mudança de honorário (diferente do histórico de reajuste negociado — esse aqui é automático,
+  // registra qualquer alteração de valor, venha de onde vier, pra rastrear a origem de cada mudança).
+  // Cria, atualiza ou fecha uma "demanda-lembrete" vinculada a outro registro (uma reunião da Agenda,
+  // um prazo de retorno de proposta em Comercial etc.) — assim o campo Demanda vira o lugar único pra
+  // ver tudo que precisa ser feito no dia a dia, sem duplicar cadastro manualmente.
+  function sincronizarDemandaLembrete(campoLink, origemId, clienteId, texto, prazo, ativo){
+    let demanda = DATA.demandas.find(d=>d[campoLink]===origemId);
+    if(!ativo){
+      if(demanda && demanda.status!=='Finalizado'){ demanda.status = 'Finalizado'; }
+      return;
+    }
+    if(demanda){
+      demanda.demanda = texto;
+      demanda.prazo = prazo;
+      demanda.clienteId = clienteId;
+      if(demanda.status==='Finalizado') demanda.status = 'Pendente'; // reabre se voltou a ficar ativa
+    } else {
+      const nova = {
+        id: 'r'+Date.now()+Math.random().toString(16).slice(2),
+        clienteId, demanda: texto, prazo, setor: 'Comercial', status: 'Pendente'
+      };
+      nova[campoLink] = origemId;
+      DATA.demandas.push(nova);
+    }
+  }
+
+  function registrarMudancaHonorario(clienteId, valorAnterior, valorNovo, origem){
+    const antes = parseMoneyLike(valorAnterior);
+    const depois = parseMoneyLike(valorNovo);
+    if(antes === depois) return;
+    DATA.historicoHonorario.push({
+      id: 'r'+Date.now()+Math.random().toString(16).slice(2),
+      clienteId, valorAnterior: antes, valorNovo: depois,
+      data: new Date().toISOString().slice(0,10),
+      origem: origem || 'Edição manual'
+    });
+  }
+  // Lançamento do mesmo RNC (mesmo erro) pra várias empresas de uma vez — evita ter que abrir
+  // "+ Novo" empresa por empresa quando um erro afeta várias de uma vez (ex: falha de sistema).
+  let rncMassaSelecionados = new Set();
+  function openRncMassaModal(){
+    rncMassaSelecionados = new Set();
+    document.getElementById('rncm-setor').value = '';
+    document.getElementById('rncm-competencia').value = '';
+    document.getElementById('rncm-descricaoErro').value = '';
+    document.getElementById('rncm-data').value = new Date().toISOString().slice(0,10);
+    document.getElementById('rncm-classificacaoErro').value = '';
+    document.getElementById('rncm-multa').value = '';
+    document.getElementById('rncm-valorMulta').value = '';
+    document.getElementById('rncm-medidaCorretiva').value = '';
+    document.getElementById('rncm-medidaPreventiva').value = '';
+    document.getElementById('rncm-contador').textContent = '0';
+    renderListaRncMassa('');
+    document.getElementById('modal-rnc-massa').classList.add('open');
+  }
+  function closeRncMassaModal(){
+    document.getElementById('modal-rnc-massa').classList.remove('open');
+  }
+  function renderListaRncMassa(filtro){
+    const texto = (filtro||'').toLowerCase();
+    const clientes = DATA.clientes
+      .filter(c=>c.statusCliente==='Ativo' && (!texto || (c.razaoSocial||'').toLowerCase().includes(texto) || (c.cnpj||'').includes(texto)))
+      .sort((a,b)=>(a.razaoSocial||'').localeCompare(b.razaoSocial||''));
+    document.getElementById('rncm-lista-clientes').innerHTML = clientes.length ? clientes.map(c=>`
+      <label style="display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:.8rem;cursor:pointer">
+        <input type="checkbox" ${rncMassaSelecionados.has(c.id)?'checked':''} onchange="toggleRncMassaCliente('${c.id}', this.checked)">
+        ${c.razaoSocial} <span style="color:var(--gray1);font-size:.7rem">${c.cnpj||''}</span>
+      </label>
+    `).join('') : '<p style="color:var(--gray1);font-size:.78rem">Nenhum cliente encontrado.</p>';
+  }
+  function filtrarListaRncMassa(texto){ renderListaRncMassa(texto); }
+  function toggleRncMassaCliente(id, checked){
+    if(checked) rncMassaSelecionados.add(id); else rncMassaSelecionados.delete(id);
+    document.getElementById('rncm-contador').textContent = rncMassaSelecionados.size;
+  }
+  function confirmarRncMassa(){
+    if(rncMassaSelecionados.size===0){ alert('Selecione ao menos uma empresa afetada.'); return; }
+    if(!document.getElementById('rncm-descricaoErro').value.trim()){ alert('Descreva o que foi o erro antes de lançar.'); return; }
+    const base = {
+      setor: document.getElementById('rncm-setor').value,
+      competencia: document.getElementById('rncm-competencia').value,
+      descricaoErro: document.getElementById('rncm-descricaoErro').value,
+      data: document.getElementById('rncm-data').value,
+      classificacaoErro: document.getElementById('rncm-classificacaoErro').value,
+      multa: document.getElementById('rncm-multa').value,
+      valorMulta: parseMoneyLike(document.getElementById('rncm-valorMulta').value),
+      medidaCorretiva: document.getElementById('rncm-medidaCorretiva').value,
+      medidaPreventiva: document.getElementById('rncm-medidaPreventiva').value,
+    };
+    const qtd = rncMassaSelecionados.size;
+    if(!confirm(`Lançar esse RNC para ${qtd} empresa(s)? Isso cria um registro separado pra cada uma.`)) return;
+    rncMassaSelecionados.forEach(clienteId=>{
+      DATA.rnc.push({
+        id: 'r'+Date.now()+Math.random().toString(16).slice(2)+Math.random().toString(16).slice(2),
+        clienteId, ...base
+      });
+    });
+    persist();
+    closeRncMassaModal();
+    if(currentView==='rnc') renderTable('rnc');
+    refreshMiniCards('rnc');
+    showToast(`RNC lançado para ${qtd} empresa(s)!`);
+  }
+
+  function abrirHistoricoStatus(clienteId){
+    const c = getCliente(clienteId);
+    document.getElementById('historico-status-title').textContent = 'Histórico de status/classificação — ' + (c?c.razaoSocial:'');
+    const rotuloCampo = { statusCliente:'Status', classificacao:'Nível' };
+    const entries = DATA.historicoStatus.filter(h=>h.clienteId===clienteId).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+    document.getElementById('historico-status-body').innerHTML = entries.length ? entries.map(h=>`
+      <div style="padding:8px 0;border-bottom:1px solid rgba(217,184,150,0.08);font-size:.8rem">
+        ${new Date(h.data+'T00:00:00').toLocaleDateString('pt-BR')} — <b>${rotuloCampo[h.campo]||h.campo}</b>: ${h.valorAnterior||'—'} → ${h.valorNovo||'—'}
+      </div>`).join('') : '<p style="color:var(--gray1);font-size:.8rem">Nenhuma mudança de status ou classificação registrada ainda.</p>';
+    document.getElementById('modal-historico-status').classList.add('open');
+  }
+  function closeHistoricoStatusModal(){
+    document.getElementById('modal-historico-status').classList.remove('open');
+  }
+
+  function abrirHistoricoHonorario(clienteId){
+    const c = getCliente(clienteId);
+    document.getElementById('historico-honorario-title').textContent = 'Histórico de honorário — ' + (c?c.razaoSocial:'');
+    const entries = DATA.historicoHonorario.filter(h=>h.clienteId===clienteId).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+    document.getElementById('historico-honorario-body').innerHTML = entries.length ? entries.map(h=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(217,184,150,0.08)">
+        <div style="font-size:.8rem">${new Date(h.data+'T00:00:00').toLocaleDateString('pt-BR')} — ${formatMoneyPlain(h.valorAnterior)} → ${formatMoneyPlain(h.valorNovo)} <span style="color:var(--gray1);font-size:.7rem">(${h.origem})</span></div>
+        <button class="icon-btn" title="Excluir este registro (preenchi errado)" onclick="excluirHistoricoHonorario('${h.id}','${clienteId}')">🗑️</button>
+      </div>`).join('') : '<p style="color:var(--gray1);font-size:.8rem">Nenhuma mudança de honorário registrada ainda.</p>';
+    document.getElementById('modal-historico-honorario').classList.add('open');
+  }
+  function closeHistoricoHonorarioModal(){
+    document.getElementById('modal-historico-honorario').classList.remove('open');
+  }
+  function excluirHistoricoHonorario(id, clienteId){
+    if(!confirm('Excluir este registro do histórico de honorário? Essa ação não pode ser desfeita.')) return;
+    DATA.historicoHonorario = DATA.historicoHonorario.filter(h=>h.id!==id);
+    persist();
+    abrirHistoricoHonorario(clienteId);
+  }
+
+  // Ponte Rentabilidade -> Oportunidades: transforma o ajuste sugerido numa negociação de verdade,
+  // com funil (Identificada -> Em andamento -> Convertida/Perdida). Se o cliente aceitar (Convertida),
+  // o honorário é atualizado automaticamente e o resultado fica registrado no histórico do cliente
+  // (ver hook em saveRecord, seção 'oportunidades').
+  function negociarHonorarioSugerido(rentabilidadeId){
+    const rent = DATA.rentabilidade.find(r=>r.id===rentabilidadeId);
+    if(!rent) return;
+    const c = getCliente(rent.clienteId);
+    if(!c) return;
+    const jaExiste = DATA.oportunidades.find(o=>o.origemRentabilidadeId===rentabilidadeId && (o.status==='Identificada'||o.status==='Em andamento'));
+    if(jaExiste){
+      alert('Já existe uma negociação em aberto para esta competência ("'+jaExiste.oportunidade+'"). Acompanhe ela na aba Oportunidades em vez de criar outra.');
+      switchView('oportunidades');
+      return;
+    }
+    const orcadas = parseNum(rent.horasOrcadas), gastas = parseNum(rent.horasGastas);
+    if(orcadas<=0 && gastas<=0){ alert('Preencha horas orçadas e horas gastas nesta competência antes de negociar — é a partir delas que o ajuste é calculado.'); return; }
+    const honorarioAtual = parseMoneyLike(c.honorario);
+    const ajuste = (gastas - orcadas) * VALOR_HORA;
+    if(ajuste===0){ alert('Não há ajuste sugerido para esta competência (horas gastas bateram exatamente com as orçadas).'); return; }
+    const honorarioSugerido = honorarioAtual + ajuste;
+    const sentido = ajuste>0 ? 'aumento' : 'redução';
+    if(!confirm(`Criar uma oportunidade para negociar ${sentido} de honorário com ${c.razaoSocial}?\n\nHonorário atual: ${formatMoneyPlain(honorarioAtual)}\nHonorário sugerido: ${formatMoneyPlain(honorarioSugerido)} (${ajuste>0?'+':''}${formatMoneyPlain(ajuste)})\n\nVocê vai poder acompanhar essa negociação na aba Oportunidades. Se o cliente aceitar (marcar como "Convertida"), o honorário é atualizado automaticamente e fica registrado no histórico do cliente.`)) return;
+    const oportunidade = {
+      id: 'r'+Date.now()+Math.random().toString(16).slice(2),
+      clienteId: rent.clienteId,
+      oportunidade: `Renegociação de honorário — competência ${rent.competencia||'?'} (${sentido} sugerido: ${formatMoneyPlain(Math.abs(ajuste))})`,
+      origem: 'Renegociação de honorário',
+      data: new Date().toISOString().slice(0,10),
+      valorEstimado: ajuste,
+      responsavel: '',
+      status: 'Identificada',
+      // Campos internos (não aparecem no formulário) — usados pra aplicar o resultado automaticamente
+      // quando o status virar Convertida ou Perdida.
+      origemRentabilidadeId: rent.id,
+      honorarioBaseNegociacao: honorarioAtual
+    };
+    DATA.oportunidades.push(oportunidade);
+    persist();
+    showToast('Oportunidade de negociação criada! Acompanhe em Oportunidades.');
+    switchView('oportunidades');
+  }
 
   function openReajustesModal(clienteId){
     reajusteClienteAtual = clienteId;
@@ -2548,6 +3456,55 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     renderReajustesModalBody();
   }
 
+  // Visão rápida dos próximos compromissos, agrupados por mês — pra bater o olho no que vem por aí
+  // sem precisar rolar a tabela toda ou mexer no filtro de período.
+  function renderAgendaProximosMeses(){
+    const hojeStr = new Date().toISOString().slice(0,10);
+    const proximos = DATA.agenda
+      .filter(a=>a.dataProgramada && a.dataProgramada>=hojeStr && a.status!=='Cancelada' && a.status!=='Realizada')
+      .sort((a,b)=>a.dataProgramada.localeCompare(b.dataProgramada));
+
+    if(proximos.length===0){
+      return `<div class="info-card" style="margin-bottom:20px">
+        <h3>📅 Próximos meses</h3>
+        <p style="color:var(--gray1);font-size:.8rem">Nenhum compromisso programado a partir de hoje.</p>
+      </div>`;
+    }
+
+    const porMes = {};
+    proximos.forEach(a=>{
+      const chave = a.dataProgramada.slice(0,7); // YYYY-MM
+      (porMes[chave] = porMes[chave]||[]).push(a);
+    });
+    const mesesOrdenados = Object.keys(porMes).sort();
+    const nomesMeses = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+
+    return `
+      <div class="info-card" style="margin-bottom:20px">
+        <h3>📅 Próximos meses (${proximos.length} compromisso(s) a partir de hoje)</h3>
+        <div style="display:flex;gap:14px;flex-wrap:wrap">
+          ${mesesOrdenados.map(chave=>{
+            const [ano,mes] = chave.split('-');
+            const nomeMes = nomesMeses[parseInt(mes,10)-1];
+            const itens = porMes[chave];
+            return `
+              <div style="flex:1;min-width:230px;background:rgba(156,111,78,0.08);border-radius:8px;padding:10px 12px">
+                <div style="font-weight:600;font-size:.85rem;margin-bottom:6px;text-transform:capitalize">${nomeMes}/${ano} <span style="color:var(--gray1);font-weight:400;font-size:.72rem">(${itens.length})</span></div>
+                ${itens.slice(0,6).map(a=>{
+                  const c = getCliente(a.clienteId);
+                  return `<div style="font-size:.76rem;padding:4px 0;border-top:1px solid rgba(217,184,150,0.08);cursor:pointer" onclick="openClienteView('${a.clienteId}')" title="Ver cliente">
+                    <b>${new Date(a.dataProgramada+'T00:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit'})}</b> — ${c?c.razaoSocial:'(cliente removido)'} <span class="chip chip-${a.status==='Remarcada'?'orange':'teal'}" style="font-size:.62rem">${a.status}</span>
+                  </div>`;
+                }).join('')}
+                ${itens.length>6 ? `<p style="color:var(--gray1);font-size:.68rem;margin-top:4px">+ ${itens.length-6} outro(s) neste mês</p>` : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+  }
+
   function renderAgendaAlertas(){
     const a = computeAlertas();
     function list(items, fmt){
@@ -2561,6 +3518,8 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
           ${miniCardHtml('Sem contato (prazo por classificação)', a.semContato.length, 'A: 60d · B: 90d · C: 120d · D: 180d', a.semContato.length>0?'red':'green')}
           ${miniCardHtml('Aniversários em 30 dias', a.aniversarios.length, 'empresa/contrato', a.aniversarios.length>0?'orange':'')}
           ${miniCardHtml('Renovações em 30 dias', a.renovacoes.length, 'contratos', a.renovacoes.length>0?'orange':'')}
+          ${miniCardHtml('Demandas vencendo/vencidas', a.demandasVencendo.length, 'em até 5 dias', a.demandasVencendo.length>0?'red':'green')}
+          ${miniCardHtml('RNC recorrente', a.rncRecorrente.length, '2+ registros em 12 meses', a.rncRecorrente.length>0?'red':'green')}
         </div>
         <p style="color:var(--gray2);font-size:.8rem;margin-bottom:6px"><b>Sem contato:</b></p>
         ${list(a.semContato, it=>`${it.cliente.razaoSocial} ${it.dias!==null ? '('+it.dias+' dias sem contato — limite '+it.limite+'d)' : '(sem histórico registrado — limite '+it.limite+'d)'}`)}
@@ -2568,13 +3527,216 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         ${list(a.aniversarios, it=>`${it.cliente.razaoSocial} (em ${it.dias} dia(s))`)}
         <p style="color:var(--gray2);font-size:.8rem;margin:10px 0 6px"><b>Renovações próximas:</b></p>
         ${list(a.renovacoes, it=>`${it.cliente.razaoSocial} (em ${it.dias} dia(s))`)}
+        <p style="color:var(--gray2);font-size:.8rem;margin:10px 0 6px"><b>Demandas com prazo vencendo/vencido:</b></p>
+        ${list(a.demandasVencendo, it=>`${it.cliente?it.cliente.razaoSocial:'(cliente removido)'} — ${(it.demanda.demanda||'').slice(0,50)} ${it.dias<0 ? '<span style="color:var(--red)">(vencida há '+(-it.dias)+' dia(s))</span>' : '(vence em '+it.dias+' dia(s))'}`)}
+        <p style="color:var(--gray2);font-size:.8rem;margin:10px 0 6px"><b>RNC recorrente (2+ em 12 meses):</b></p>
+        ${list(a.rncRecorrente, it=>`${it.cliente.razaoSocial} — ${it.qtd} registro(s)${it.graves>0 ? ', '+it.graves+' grave(s)' : ''}`)}
+      </div>
+    `;
+  }
+
+  function renderComercialResumo(){
+    const rows = filteredRows('comercial');
+    if(rows.length===0) return '';
+    const periodoAtivo = filtroInicio || filtroFim;
+
+    const emAberto = rows.filter(d=>d.statusProposta==='Proposta enviada' || d.statusProposta==='Pendente');
+    const previsaoPipeline = emAberto.reduce((s,d)=>s+honorarioEfetivoComercial(d),0);
+    const ticketMedioAberto = emAberto.length ? previsaoPipeline/emAberto.length : 0;
+    const aceitas = rows.filter(d=>d.statusProposta==='Aceita');
+    const totalFechado = aceitas.reduce((s,d)=>s+honorarioEfetivoComercial(d),0);
+
+    return `
+      <div class="bars-card" style="margin-bottom:16px">
+        <h3>📈 Planejamento comercial${periodoAtivo?' — período selecionado':''}</h3>
+        <p style="color:var(--gray1);font-size:.68rem;margin-bottom:10px">Previsão de quanto ainda pode virar honorário recorrente se as propostas em aberto (enviada/pendente) forem aceitas — usa o honorário efetivamente enviado quando preenchido, senão o calculado pela planilha.</p>
+        <div class="mini-cards">
+          ${miniCardHtml('Previsão em pipeline', formatMoneyPlain(previsaoPipeline), `${emAberto.length} proposta(s) em aberto`, previsaoPipeline>0?'green':'')}
+          ${miniCardHtml('Ticket médio (em aberto)', formatMoneyPlain(ticketMedioAberto), 'por proposta ainda sem decisão', '')}
+          ${miniCardHtml('Já fechado no período', formatMoneyPlain(totalFechado), `${aceitas.length} proposta(s) aceita(s)`, totalFechado>0?'green':'')}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderRncResumo(){
+    const rows = filteredRows('rnc');
+    if(rows.length===0){
+      return `<div class="bars-card" style="margin-bottom:16px">
+        <h3>📊 Indicadores de RNC</h3>
+        <p style="color:var(--gray1);font-size:.8rem">Nenhum registro no período.</p>
+      </div>`;
+    }
+    const clientesAtivosRnc = DATA.clientes.filter(c=>c.statusCliente==='Ativo').length || 1;
+    const indice = rows.length / clientesAtivosRnc;
+    const totalAssescont = rows.filter(r=>r.multa && r.multa.startsWith('Sim - paga pela Assescont')).reduce((s,r)=>s+parseMoneyLike(r.valorMulta),0);
+    const totalCliente = rows.filter(r=>r.multa && r.multa.startsWith('Sim - paga pelo cliente')).reduce((s,r)=>s+parseMoneyLike(r.valorMulta),0);
+
+    // Contagem por setor e por classificação — vira só uma linha compacta agora (era barra grande antes)
+    const porSetor = {};
+    rows.forEach(r=>{ const s = r.setor||'Não informado'; porSetor[s] = (porSetor[s]||0)+1; });
+    const setoresOrdenados = Object.keys(porSetor).sort((a,b)=>porSetor[b]-porSetor[a]);
+    const classesOrdem = ['Grave','Moderado','Leve'];
+    const porClasse = classesOrdem.map(c=>({ label:c, n: rows.filter(r=>r.classificacaoErro===c).length }));
+
+    // Valor de multa por setor — quem mais gera RNC em quantidade não é necessariamente quem mais
+    // custa em R$ (ex: um único RNC caro de um setor pode pesar mais que vários RNC baratos de outro).
+    const porSetorValor = {};
+    rows.forEach(r=>{ const s = r.setor||'Não informado'; porSetorValor[s] = (porSetorValor[s]||0) + parseMoneyLike(r.valorMulta); });
+    const setoresPorValor = Object.keys(porSetorValor).filter(s=>porSetorValor[s]>0).sort((a,b)=>porSetorValor[b]-porSetorValor[a]);
+    const maxValorSetor = Math.max(1, ...setoresPorValor.map(s=>porSetorValor[s]));
+
+    // Padrões identificados — isso é regra/estatística simples sobre os dados que já existem, não é
+    // uma IA lendo e interpretando o texto de verdade (o sistema não tem esse recurso).
+    const padroes = [];
+    const setorTopoContagem = setoresOrdenados[0];
+    if(setorTopoContagem && rows.length>=3){
+      const pct = Math.round(porSetor[setorTopoContagem]/rows.length*100);
+      if(pct>=50) padroes.push(`${pct}% dos RNC deste período são do setor ${setorTopoContagem} — vale revisar o processo desse setor.`);
+    }
+    const setorTopoValor = setoresPorValor[0];
+    if(setorTopoValor && setorTopoValor!==setorTopoContagem){
+      padroes.push(`O setor ${setorTopoValor} concentra o maior valor em multas (${formatMoneyPlain(porSetorValor[setorTopoValor])}), mesmo sem ser o que mais gera RNC em quantidade — vale atenção aqui.`);
+    }
+    const graves = rows.filter(r=>r.classificacaoErro==='Grave').length;
+    if(graves===0) padroes.push('Nenhum RNC classificado como Grave neste período — bom sinal.');
+    else if(graves/rows.length>=0.3) padroes.push(`${Math.round(graves/rows.length*100)}% dos RNC são Graves — proporção alta, merece atenção da diretoria.`);
+
+    // Categoriza a CAUSA por trás do erro (não é só contar palavra solta — "multa"/"erro" aparecem em
+    // quase toda descrição de RNC e não dizem nada útil). Cada categoria já vem com uma sugestão de
+    // melhoria de processo pareada, pra virar uma ação concreta, não só uma estatística.
+    const CATEGORIAS_CAUSA = [
+      { nome:'Prazo/atraso', palavras:['atraso','atrasad','prazo','vencid','tarde','fora do prazo'],
+        sugestao:'considerar alerta de prazo com mais antecedência ou revisar o fluxo interno de aprovação antes do envio.' },
+      { nome:'Sistema/ferramenta', palavras:['sistema','dominio','portal','plataforma','site','instabilidade','fora do ar','erro tecnico'],
+        sugestao:'vale investigar se há falha recorrente de sistema/integração que possa ser resolvida na origem (ex: automatizar a etapa manual).' },
+      { nome:'Informação do cliente', palavras:['cliente nao enviou','nao informou','nao repassou','falta de informacao','sem retorno do cliente','cliente nao respondeu'],
+        sugestao:'um checklist de solicitação de documentos/informações ao cliente, com confirmação de recebimento, pode reduzir esse tipo de erro.' },
+      { nome:'Cálculo/conferência', palavras:['calculo','valor incorreto','divergencia','conferencia','digitacao','valor errado','lancamento errado'],
+        sugestao:'uma segunda conferência (dupla checagem) antes do envio pode reduzir erros de cálculo/lançamento.' },
+      { nome:'Documentação', palavras:['documento','anexo','documentacao incompleta','faltou enviar','nao anexou'],
+        sugestao:'um checklist de documentos obrigatórios antes do envio pode reduzir esse tipo de erro.' },
+    ];
+    const contagemCategoria = {};
+    rows.forEach(r=>{
+      const texto = normalizeStr(r.descricaoErro||'');
+      CATEGORIAS_CAUSA.forEach(cat=>{
+        if(cat.palavras.some(p=>texto.includes(p))) contagemCategoria[cat.nome] = (contagemCategoria[cat.nome]||0)+1;
+      });
+    });
+    const categoriaTopo = Object.keys(contagemCategoria).sort((a,b)=>contagemCategoria[b]-contagemCategoria[a])[0];
+    if(categoriaTopo && contagemCategoria[categoriaTopo]>=2){
+      const catObj = CATEGORIAS_CAUSA.find(c=>c.nome===categoriaTopo);
+      const pctCat = Math.round(contagemCategoria[categoriaTopo]/rows.length*100);
+      padroes.push(`${contagemCategoria[categoriaTopo]} de ${rows.length} RNC (${pctCat}%) têm descrição relacionada a "${categoriaTopo}" — sugestão de melhoria: ${catObj.sugestao}`);
+    } else if(!categoriaTopo && rows.some(r=>r.descricaoErro)){
+      padroes.push('As descrições registradas não se encaixam nas causas mais comuns já mapeadas (prazo, sistema, informação do cliente, cálculo, documentação) — vale ler as descrições individualmente para identificar um padrão.');
+    }
+
+    const periodoAtivo = filtroInicio || filtroFim;
+
+    return `
+      <div class="bars-card" style="margin-bottom:16px">
+        <h3>📊 Indicadores de RNC${periodoAtivo?' — período selecionado':''}</h3>
+        <div class="mini-cards" style="margin-bottom:14px">
+          ${miniCardHtml('Índice RNC/cliente ativo', (indice*100).toFixed(2)+'%', `${rows.length} registro(s) ÷ ${clientesAtivosRnc} ativos`, indice<=0.1?'green':(indice<=0.3?'orange':'red'))}
+          ${miniCardHtml('Custo total (Assescont)', formatMoneyPlain(totalAssescont), 'multas que oneraram o escritório', totalAssescont>0?'red':'green')}
+          ${miniCardHtml('Custo total (cliente)', formatMoneyPlain(totalCliente), 'multas pagas pelo cliente')}
+        </div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:14px;font-size:.76rem;color:var(--gray2)">
+          <span><b style="color:var(--gray1);text-transform:uppercase;font-size:.66rem">Classificação</b><br>${porClasse.map(c=>`${c.label} <span style="color:var(--white)">${c.n}</span>`).join(' · ')}</span>
+          <span><b style="color:var(--gray1);text-transform:uppercase;font-size:.66rem">Setor</b><br>${setoresOrdenados.map(s=>`${s} <span style="color:var(--white)">${porSetor[s]}</span>`).join(' · ')}</span>
+        </div>
+        <p style="color:var(--gray2);font-size:.8rem;margin-bottom:6px"><b>Valor de multas por setor:</b></p>
+        ${setoresPorValor.length===0 ? '<p style="color:var(--gray1);font-size:.78rem">Nenhuma multa com valor registrado neste período.</p>' : setoresPorValor.map(s=>`
+          <div class="bar-row"><div class="bar-label">${s}</div><div class="bar-track"><div class="bar-fill" style="width:${Math.round(porSetorValor[s]/maxValorSetor*100)}%"></div></div><div class="bar-val" style="width:100px">${formatMoneyPlain(porSetorValor[s])}</div></div>`).join('')}
+        ${padroes.length ? `
+        <div style="background:rgba(217,184,150,0.08);border-left:3px solid var(--teal-light,#d9b896);border-radius:6px;padding:10px 12px;margin-top:14px">
+          <p style="font-size:.66rem;color:var(--teal-light,#d9b896);text-transform:uppercase;margin:0 0 6px">Padrões identificados (por regra/estatística — não é uma IA lendo o texto)</p>
+          ${padroes.map(p=>`<p style="font-size:.76rem;color:var(--gray2);margin:0 0 4px">• ${p}</p>`).join('')}
+        </div>` : ''}
+      </div>
+    `;
+  }
+
+  function renderOportunidadesResumo(){
+    const rows = filteredRows('oportunidades');
+    const totalParaPct = rows.length || 1;
+    const statusOrder = ['Identificada','Em andamento','Convertida','Perdida'];
+    const funil = statusOrder.map(s=>{ const n = rows.filter(o=>o.status===s).length; return { label:s, n, pct: Math.round(n/totalParaPct*100) }; });
+
+    // Negociações de honorário (nascidas da Rentabilidade) entram no funil normalmente — é útil ver o
+    // andamento delas — mas NÃO contam nos valores de cross-sell abaixo: o ganho delas já aparece no
+    // indicador "Ganho com reajustes" do dashboard; contar nos dois ao mesmo tempo duplicaria o valor.
+    const crossSell = o => o.origem !== 'Renegociação de honorário';
+    const valorConvertido = rows.filter(o=>o.status==='Convertida' && crossSell(o)).reduce((s,o)=>s+parseMoneyLike(o.valorEstimado),0);
+    const valorAberto = rows.filter(o=>(o.status==='Identificada'||o.status==='Em andamento') && crossSell(o)).reduce((s,o)=>s+parseMoneyLike(o.valorEstimado),0);
+    const valorTotal = rows.filter(crossSell).reduce((s,o)=>s+parseMoneyLike(o.valorEstimado),0);
+
+    // Competência = mês/ano da data da oportunidade (não existe um campo de competência manual aqui,
+    // então aproveita a data já preenchida — igual ao que o Comercial faz com "competenciaEntrada").
+    const porCompetencia = {};
+    rows.filter(o=>o.status==='Convertida' && crossSell(o)).forEach(o=>{
+      let comp = 'Sem data';
+      const m = String(o.data||'').match(/^(\d{4})-(\d{2})/);
+      if(m) comp = m[2]+'/'+m[1];
+      porCompetencia[comp] = (porCompetencia[comp]||0) + parseMoneyLike(o.valorEstimado);
+    });
+    const competenciasOrdenadas = Object.keys(porCompetencia).sort();
+    const maxComp = Math.max(1, ...competenciasOrdenadas.map(c=>porCompetencia[c]));
+    const periodoAtivo = filtroInicio || filtroFim;
+
+    return `
+      <div class="bars-card" style="margin-bottom:16px">
+        <h3>🎯 Resultado de Oportunidades${periodoAtivo?' — período selecionado':''}</h3>
+        <p style="color:var(--gray1);font-size:.68rem;margin-bottom:10px">Negociações de honorário (vindas da Rentabilidade) entram no funil abaixo, mas o valor delas conta só em "Ganho com reajustes" no Dashboard — não aqui, pra não contar em dobro.</p>
+        <div class="mini-cards" style="margin-bottom:14px">
+          ${miniCardHtml('Valor total identificado', formatMoneyPlain(valorTotal), `${rows.filter(crossSell).length} oportunidade(s) de cross-sell`, '')}
+          ${miniCardHtml('Valor convertido', formatMoneyPlain(valorConvertido), 'cross-selling realizado', valorConvertido>0?'green':'')}
+          ${miniCardHtml('Valor em aberto', formatMoneyPlain(valorAberto), 'potencial a trabalhar', '')}
+        </div>
+        <p style="color:var(--gray2);font-size:.8rem;margin-bottom:6px"><b>Funil:</b></p>
+        ${rows.length===0 ? '<p style="color:var(--gray1);font-size:.8rem">Nenhuma oportunidade no período.</p>' : funil.map(f=>`
+          <div class="bar-row"><div class="bar-label">${f.label}</div><div class="bar-track"><div class="bar-fill" style="width:${f.pct}%"></div></div><div class="bar-val">${f.n}</div></div>`).join('')}
+        <p style="color:var(--gray2);font-size:.8rem;margin:12px 0 6px"><b>Valor convertido por competência (mês/ano da data):</b></p>
+        ${competenciasOrdenadas.length===0 ? '<p style="color:var(--gray1);font-size:.8rem">Nenhuma oportunidade convertida ainda.</p>' : competenciasOrdenadas.map(c=>`
+          <div class="bar-row"><div class="bar-label">${c}</div><div class="bar-track"><div class="bar-fill" style="width:${Math.round(porCompetencia[c]/maxComp*100)}%"></div></div><div class="bar-val" style="width:110px">${formatMoney(porCompetencia[c])}</div></div>`).join('')}
+        <p style="color:var(--gray1);font-size:.68rem;margin-top:8px">Use o filtro de período acima para ver só uma competência (ex: defina De = 01/07/2026 e Até = 31/07/2026 para ver só julho/2026).</p>
       </div>
     `;
   }
 
   function renderRentabilidadeResumo(){
     const rows = filteredRows('rentabilidade');
-    if(rows.length===0) return '';
+
+    // Capacidade operacional: quantidade de colaboradores (preenchida manualmente, fica salva) x 220h/mês
+    // por colaborador = capacidade total em HH (Hora Homem). Comparada com as horas gastas (do Domínio,
+    // lançadas na própria Rentabilidade) pra saber quanta hora ainda está disponível.
+    const colaboradores = parseNum(DATA.configColaboradoresOperacionais);
+    const capacidadeTotal = colaboradores * 220;
+    const horasGastasTotal = rows.reduce((s,r)=>s+parseNum(r.horasGastas),0);
+    const horasDisponiveis = capacidadeTotal - horasGastasTotal;
+    const periodoAtivoRent = filtroInicio || filtroFim;
+
+    const blocoCapacidade = `
+      <div class="bars-card" style="margin-bottom:16px">
+        <h3>👥 Capacidade operacional${periodoAtivoRent?' — período selecionado':''}</h3>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+          <span style="font-size:.78rem;color:var(--gray2)">Colaboradores operacionais:</span>
+          <input type="number" min="0" step="1" value="${colaboradores||''}" placeholder="0"
+            style="width:80px;background:rgba(255,255,255,0.05);border:1px solid rgba(217,184,150,0.2);border-radius:6px;padding:4px 8px;color:var(--white);font-size:.85rem"
+            onchange="DATA.configColaboradoresOperacionais=this.value; persist(); renderMain();">
+          <span style="font-size:.72rem;color:var(--gray1)">× 220h/mês cada — preencha uma vez, fica salvo</span>
+        </div>
+        <div class="mini-cards">
+          ${miniCardHtml('Capacidade total', capacidadeTotal.toLocaleString('pt-BR')+' HH', `${colaboradores||0} colaborador(es) × 220h`, '')}
+          ${miniCardHtml('Horas gastas (Domínio)', horasGastasTotal.toLocaleString('pt-BR')+' HH', 'lançadas na Rentabilidade', '')}
+          ${miniCardHtml('Horas disponíveis', horasDisponiveis.toLocaleString('pt-BR')+' HH', 'capacidade − horas gastas', capacidadeTotal===0?'':(horasDisponiveis>=0?'green':'red'))}
+        </div>
+      </div>
+    `;
+
+    if(rows.length===0) return blocoCapacidade;
     const grupos = {};
     rows.forEach(r=>{
       const c = getCliente(r.clienteId);
@@ -2593,7 +3755,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       const desvioFat = fc>0 ? Math.round((fa-fc)/fc*1000)/10 : null;
       return { g, o, gs, desvio, fc, fa, desvioFat };
     });
-    return `
+    return blocoCapacidade + `
       <div class="bars-card">
         <h3>📈 Resumo por grupo (horas orçadas x gastas)</h3>
         ${linhas.map(l=>`
@@ -2622,6 +3784,23 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
      Lê exatamente o que está na tela (linhas filtradas/buscadas), então o
      que sai no arquivo é sempre igual ao que o usuário está vendo na tabela.
      ====================================================================== */
+  // O gerador de PDF (jsPDF, fonte padrão) só desenha corretamente Latin-1 + uma faixa extra de
+  // pontuação do Windows-1252 (aspas curvas, travessão, buller, etc.) — qualquer emoji, seta, ícone
+  // ou símbolo gráfico usado na tela (🏢, ▸, ↳, 👁️ etc.) vira caractere corrompido no PDF. Em vez de
+  // manter uma lista de exceções que sempre fica incompleta, filtra por whitelist: mantém só o que a
+  // fonte sabe desenhar, descarta o resto — funciona pra qualquer aba, com qualquer ícone, agora ou no futuro.
+  const CP1252_EXTRAS_PDF = new Set([0x20AC,0x201A,0x0192,0x201E,0x2026,0x2020,0x2021,0x02C6,0x2030,0x0160,0x2039,0x0152,0x017D,0x2018,0x2019,0x201C,0x201D,0x2022,0x2013,0x2014,0x02DC,0x2122,0x0161,0x203A,0x0153,0x017E,0x0178]);
+  function sanitizarTextoPdf(texto){
+    if(texto===null || texto===undefined) return '';
+    let out = '';
+    for(const ch of String(texto)){
+      const cp = ch.codePointAt(0);
+      if(cp <= 0xFF || CP1252_EXTRAS_PDF.has(cp)) out += ch;
+      // qualquer outro caractere (emoji, seta, símbolo gráfico) é descartado silenciosamente
+    }
+    return out.replace(/[ \t]+/g,' ').replace(/ ?\n ?/g,'\n').trim();
+  }
+
   function obterDadosTabelaAtual(key){
     const tbody = document.getElementById('tbody-'+key);
     if(!tbody) return null;
@@ -2655,11 +3834,33 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     return `Assescont_${tituloLimpo}_${dataHoje}.${ext}`;
   }
 
+  // Resumo dos mini-cards do topo da aba Clientes — incluído nas exportações pra não perder esse contexto.
+  function obterResumoCardsClientes(){
+    const rows = filteredRows('clientes');
+    const ativos = rows.filter(r=>r.statusCliente==='Ativo');
+    const honorariosTotal = ativos.reduce((s,c)=>s+parseMoneyLike(c.honorario),0);
+    const gruposUnicos = new Set(ativos.filter(c=>c.grupo).map(c=>c.grupo)).size;
+    const semGrupoCount = ativos.filter(c=>!c.grupo).length;
+    const clientesPorGrupo = gruposUnicos + semGrupoCount;
+    return [
+      ['Clientes ativos (qtd. CNPJ)', `${ativos.length} de ${rows.length} cadastrados`],
+      ['Honorários total', formatMoneyPlain(honorariosTotal) + ' (soma dos ativos)'],
+      ['Clientes por grupo', `${clientesPorGrupo} (sem contar filiais)`]
+    ];
+  }
+
   function exportarExcelSecao(key){
     if(typeof XLSX === 'undefined'){ alert('Não consegui carregar o exportador de Excel agora. Verifique sua conexão e tente de novo.'); return; }
     const dados = obterDadosTabelaAtual(key);
     if(!dados || dados.linhas.length===0){ alert('Não há registros para exportar nesta tela (confira os filtros aplicados).'); return; }
-    const ws = XLSX.utils.aoa_to_sheet([dados.headers, ...dados.linhas]);
+    const linhasPlanilha = [];
+    if(key==='clientes'){
+      linhasPlanilha.push(['Resumo (cards do topo da aba)']);
+      obterResumoCardsClientes().forEach(([label,val])=>linhasPlanilha.push([label, val]));
+      linhasPlanilha.push([]);
+    }
+    linhasPlanilha.push(dados.headers, ...dados.linhas);
+    const ws = XLSX.utils.aoa_to_sheet(linhasPlanilha);
     ws['!cols'] = dados.headers.map(h=>({ wch: Math.min(40, Math.max(12, h.length+4)) }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, (SECTIONS[key]?.title || key).slice(0,31));
@@ -2669,31 +3870,48 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
 
   function exportarPdfSecao(key){
     if(typeof jspdf === 'undefined' || typeof jspdf.jsPDF !== 'function'){ alert('Não consegui carregar o exportador de PDF agora. Verifique sua conexão e tente de novo.'); return; }
-    const dados = obterDadosTabelaAtual(key);
-    if(!dados || dados.linhas.length===0){ alert('Não há registros para exportar nesta tela (confira os filtros aplicados).'); return; }
+    const dadosBrutos = obterDadosTabelaAtual(key);
+    if(!dadosBrutos || dadosBrutos.linhas.length===0){ alert('Não há registros para exportar nesta tela (confira os filtros aplicados).'); return; }
+    // Sanitiza tudo que vai pro PDF — qualquer ícone/emoji usado na tela (de qualquer aba, conhecido ou não)
+    // vira caractere corrompido na fonte do gerador; aqui filtra pra manter só o que a fonte desenha direito.
+    const dados = {
+      headers: dadosBrutos.headers.map(sanitizarTextoPdf),
+      linhas: dadosBrutos.linhas.map(linha=>linha.map(sanitizarTextoPdf))
+    };
     const paisagem = dados.headers.length > 6;
     const doc = new jspdf.jsPDF({ orientation: paisagem ? 'landscape' : 'portrait', unit:'mm', format:'a4' });
-    const corMarca = [156,111,78]; // teal-brown da identidade Assescont
+    const corMarca = [225,181,128];   // dourado da identidade visual Assescont
+    const corGrafite = [35,36,34];    // grafite escuro da identidade visual Assescont
     const larguraPagina = doc.internal.pageSize.getWidth();
+    const resumoCards = key==='clientes' ? obterResumoCardsClientes() : null;
 
     function cabecalho(){
-      try{ doc.addImage(LOGO_SRC, 'PNG', 12, 8, 12, 12); }catch(e){}
-      doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(30,30,30);
-      doc.text('Assescont · ' + tituloSecao(key).replace(/^\S+\s/,''), 27, 15);
-      doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(120,120,120);
+      doc.setFillColor(corGrafite[0],corGrafite[1],corGrafite[2]);
+      doc.rect(0, 0, larguraPagina, 23, 'F');
+      try{ doc.addImage(LOGO_SRC, 'PNG', 10, 4.5, 14, 14); }catch(e){}
+      doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(255,255,255);
+      doc.text('ASSESCONT  ·  ' + sanitizarTextoPdf(tituloSecao(key).replace(/^\S+\s/,'')).toUpperCase(), 28, 11);
+      doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(corMarca[0],corMarca[1],corMarca[2]);
       const agora = new Date();
-      doc.text('Exportado em ' + agora.toLocaleDateString('pt-BR') + ' às ' + agora.toLocaleTimeString('pt-BR').slice(0,5) + '  ·  ' + dados.linhas.length + ' registro(s)', 27, 20);
-      doc.setDrawColor(corMarca[0],corMarca[1],corMarca[2]); doc.setLineWidth(0.6);
-      doc.line(12, 24, larguraPagina-12, 24);
+      doc.text('Exportado em ' + agora.toLocaleDateString('pt-BR') + ' às ' + agora.toLocaleTimeString('pt-BR').slice(0,5) + '  ·  ' + dados.linhas.length + ' registro(s)', 28, 17);
+    }
+
+    let startY = 30;
+    if(resumoCards){
+      doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(60,60,60);
+      doc.text('Resumo (cards do topo da aba):', 12, startY); startY += 5;
+      doc.setFont('helvetica','normal'); doc.setFontSize(9);
+      resumoCards.forEach(([label,val])=>{ doc.text(sanitizarTextoPdf(`-  ${label}: ${val}`), 14, startY); startY += 5; });
+      startY += 3;
     }
 
     doc.autoTable({
       head: [dados.headers],
       body: dados.linhas,
-      startY: 28,
+      startY,
       margin: { top: 28, left: 10, right: 10, bottom: 14 },
       styles: { font:'helvetica', fontSize: 8, cellPadding: 2.2, overflow:'linebreak', valign:'middle' },
-      headStyles: { fillColor: corMarca, textColor: [255,255,255], fontStyle:'bold', halign:'left' },
+      headStyles: { fillColor: corMarca, textColor: [40,30,20], fontStyle:'bold', halign:'left' },
       alternateRowStyles: { fillColor: [245,242,238] },
       theme: 'grid',
       didDrawPage: cabecalho
@@ -2802,8 +4020,28 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     if(key==='relacionamento'){
       // Aqui a seleção guarda o clienteId (não o id do registro) — várias empresas do mesmo grupo
       // podem apontar pro mesmo registro compartilhado, então buscamos/criamos por cliente.
-      ids.forEach(clienteId=>{ const rec = getOrCreateRelacionamento(clienteId); rec[fieldKey] = valor; });
+      if(fieldKey==='classificacao'){
+        ids.forEach(clienteId=>{
+          const rec = getOrCreateRelacionamento(clienteId);
+          if(rec.classificacao!==valor){
+            DATA.historicoStatus.push({ id:'r'+Date.now()+Math.random().toString(16).slice(2)+Math.random().toString(16).slice(2), clienteId, campo:'classificacao', valorAnterior: rec.classificacao, valorNovo: valor, data: new Date().toISOString().slice(0,10) });
+          }
+          rec[fieldKey] = valor;
+        });
+      } else {
+        ids.forEach(clienteId=>{ const rec = getOrCreateRelacionamento(clienteId); rec[fieldKey] = valor; });
+      }
     } else {
+      if(key==='clientes' && fieldKey==='honorario'){
+        DATA.clientes.forEach(c=>{ if(ids.has(c.id)) registrarMudancaHonorario(c.id, c.honorario, valor, 'Edição em massa'); });
+      }
+      if(key==='clientes' && fieldKey==='statusCliente'){
+        DATA.clientes.forEach(c=>{
+          if(ids.has(c.id) && c.statusCliente!==valor){
+            DATA.historicoStatus.push({ id:'r'+Date.now()+Math.random().toString(16).slice(2)+Math.random().toString(16).slice(2), clienteId:c.id, campo:'statusCliente', valorAnterior:c.statusCliente, valorNovo:valor, data: new Date().toISOString().slice(0,10) });
+          }
+        });
+      }
       DATA[key].forEach(r=>{ if(ids.has(r.id)) r[fieldKey] = valor; });
     }
     persist();
@@ -2823,6 +4061,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     if(key==='grupoCliente') return 'Grupo';
     if(key==='cidadeUf') return 'Cidade/UF';
     if(key==='desvioFaturamento') return 'Desvio Faturamento %';
+    if(key==='divisaoChip') return 'Divisão';
     return key;
   }
 
@@ -2847,6 +4086,19 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     }
     if(key === 'grupo'){
       return record.grupo ? record.grupo : '<span style="color:var(--gray1)">N/A</span>';
+    }
+    if(key === 'divisaoChip' && secKey === 'clientes'){
+      const div = divisaoDoCliente(record);
+      if(!div) return '<span style="color:var(--gray1)">—</span>';
+      const CORES_DIVISAO = { 'Serviço':'teal', 'Comércio':'orange', 'Indústria':'purple', 'Locação':'gray', 'Terceiro Setor':'green' };
+      return `<span class="chip chip-${CORES_DIVISAO[div]||'gray'}">${div}</span>`;
+    }
+    if(key === 'oportunidade' && secKey === 'oportunidades'){
+      const ehReajuste = record.origem === 'Renegociação de honorário';
+      const chip = ehReajuste
+        ? '<span class="chip chip-orange" style="margin-right:6px;white-space:nowrap">💰 Reajuste</span>'
+        : '<span class="chip chip-teal" style="margin-right:6px;white-space:nowrap">🎯 Cross-sell</span>';
+      return chip + (record.oportunidade || '');
     }
     if(key === 'cidadeUf'){
       const parts = [record.cidade, record.estado].filter(Boolean);
@@ -2929,6 +4181,12 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     const tbody = document.getElementById(`tbody-${key}`);
     if(!tbody) return;
     let rows = filteredRows(key);
+    if(key==='demandas' && !mostrarDemandasConcluidas && quickFilter.key!=='demandas'){
+      rows = rows.filter(r=>r.status!=='Finalizado');
+    }
+    if(key==='agenda' && filtrosAgenda.status){
+      rows = rows.filter(r=>r.status===filtrosAgenda.status);
+    }
     if(quickFilter.key===key && quickFilter.predicate){
       rows = rows.filter(quickFilter.predicate);
     }
@@ -2972,7 +4230,9 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     tbody.innerHTML = rows.map(r=>{
       let extraBtns = '';
       if(key==='clientes'){
-        extraBtns = `<button class="icon-btn" title="Ver dados" onclick="openClienteView('${r.id}')">👁️</button>`;
+        extraBtns = `<button class="icon-btn" title="Ver dados" onclick="openClienteView('${r.id}')">👁️</button>
+          <button class="icon-btn" title="Histórico de honorário" onclick="abrirHistoricoHonorario('${r.id}')">💰</button>
+          <button class="icon-btn" title="Histórico de status/classificação" onclick="abrirHistoricoStatus('${r.id}')">📋</button>`;
       }
       if(key==='comercial'){
         extraBtns = `<button class="icon-btn" title="Gerar/atualizar proposta em PDF" onclick="regenerarProposta('${r.id}')">📄</button>
@@ -2980,7 +4240,8 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
           <button class="icon-btn" title="Copiar texto da proposta para e-mail" onclick="copiarTextoProposta('${r.id}')">📋</button>`;
       }
       if(key==='rentabilidade'){
-        extraBtns = `<button class="icon-btn" title="Histórico de reajustes de honorário" onclick="openReajustesModal('${r.clienteId}')">📈</button>`;
+        extraBtns = `<button class="icon-btn" title="Histórico de reajustes de honorário" onclick="openReajustesModal('${r.clienteId}')">📈</button>
+          <button class="icon-btn" title="Negociar honorário sugerido em Oportunidades" onclick="negociarHonorarioSugerido('${r.id}')">💬</button>`;
       }
       return `
       <tr>
@@ -3003,10 +4264,17 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
   let quickFilter = { key:null, predicate:null, label:'' };
   let filtrosClientes = { status:'', regime:'', estado:'', grupo:'' };
   let filtrosRelacionamento = { nivel:'', status:'' };
+  let filtrosAgenda = { status:'' };
+  // Demandas concluídas ficam arquivadas (fora da lista principal) por padrão, pra não poluir o controle.
+  let mostrarDemandasConcluidas = false;
+  function toggleMostrarDemandasConcluidas(){
+    mostrarDemandasConcluidas = !mostrarDemandasConcluidas;
+    switchView('demandas');
+  }
   let filtroDivisaoComercial = '';
   let sortSegmento = { campo:'qtd', dir:'desc' };
   let sortEstado = { campo:'honorario', dir:'desc' };
-  const sortEstadoTabelas = {}; // ordenação clicável nas tabelas de cada aba — { [secKey]: {campo, dir} }
+  const sortEstadoTabelas = { rnc: { campo:'data', dir:'desc' } }; // ordenação clicável nas tabelas de cada aba — { [secKey]: {campo, dir} }; RNC já entra ordenado por data de lançamento (mais recente primeiro), a pedido do usuário
 
   function alternarOrdenacaoTabela(key, campo){
     if(!sortEstadoTabelas[key]) sortEstadoTabelas[key] = { campo:null, dir:'asc' };
@@ -3037,7 +4305,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       const num = parseFloat(texto);
       return isNaN(num) ? String(fComputed.compute(record)||'') : num;
     }
-    if(['indiceCalc','desvio','grupoCliente','cidadeUf','desvioFaturamento'].includes(key)){
+    if(['indiceCalc','desvio','grupoCliente','cidadeUf','desvioFaturamento','divisaoChip'].includes(key)){
       const texto = fmtVal(sec, key, record, secKey).replace(/<[^>]+>/g,'').trim();
       const num = parseFloat(texto.replace('%','').replace(',','.'));
       return isNaN(num) ? texto.toLowerCase() : num;
@@ -3082,6 +4350,25 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
           <option value="Vermelho" ${filtrosRelacionamento.status==='Vermelho'?'selected':''}>🔴 Vermelho</option>
         </select>
         ${ativo ? `<button class="btn btn-ghost" onclick="filtrosRelacionamento={nivel:'',status:''};renderMain();">Limpar filtros</button>` : ''}
+      </div>
+    `;
+  }
+
+  // Com muitas reuniões no mês, misturar Programada/Realizada/Remarcada/Cancelada na mesma lista
+  // vira bagunça rápido — esse filtro deixa isolar só o que interessa ver no momento.
+  function renderFiltrosAgenda(){
+    const ativo = filtrosAgenda.status;
+    return `
+      <div class="toolbar" style="margin-bottom:14px">
+        <span style="font-size:.78rem;color:var(--gray2)">🔍 Filtrar por:</span>
+        <select class="filter-select" onchange="filtrosAgenda.status=this.value; renderTable('agenda');">
+          <option value="">Status: todos</option>
+          <option value="Programada" ${filtrosAgenda.status==='Programada'?'selected':''}>Programada</option>
+          <option value="Realizada" ${filtrosAgenda.status==='Realizada'?'selected':''}>Realizada</option>
+          <option value="Remarcada" ${filtrosAgenda.status==='Remarcada'?'selected':''}>Remarcada</option>
+          <option value="Cancelada" ${filtrosAgenda.status==='Cancelada'?'selected':''}>Cancelada</option>
+        </select>
+        ${ativo ? `<button class="btn btn-ghost" onclick="filtrosAgenda.status=''; renderTable('agenda');">Limpar</button>` : ''}
       </div>
     `;
   }
@@ -3197,19 +4484,27 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
   }
 
   function filtroClientesAtivos(){ ativarFiltroRapido('clientes', r=>r.statusCliente==='Ativo', 'Ativos'); }
+  function switchViewClientes(){ switchView('clientes'); }
+  function switchViewRelacionamento(){ switchView('relacionamento'); }
+  function switchViewComercial(){ switchView('comercial'); }
+  function switchViewOportunidades(){ switchView('oportunidades'); }
+  function switchViewRnc(){ switchView('rnc'); }
   function filtroClientesCancelados(){ ativarFiltroRapido('clientes', r=>r.statusCliente==='Cancelado', 'Cancelados'); }
   function filtroComercialNegociacao(){ ativarFiltroRapido('comercial', r=>r.statusProposta==='Pendente'||r.statusProposta==='Proposta enviada', 'Em negociação'); }
   function filtroComercialRecusadas(){ ativarFiltroRapido('comercial', r=>r.statusProposta==='Recusada', 'Recusadas'); }
   function filtroComercialAceitas(){ ativarFiltroRapido('comercial', r=>r.statusProposta==='Aceita', 'Aceitas'); }
   function filtroDemandasAbertas(){ ativarFiltroRapido('demandas', r=>r.status!=='Finalizado', 'Em aberto'); }
   function filtroDemandasAtrasadas(){ ativarFiltroRapido('demandas', r=>r.status!=='Finalizado' && daysDiff(r.prazo)!==null && daysDiff(r.prazo)<0, 'Atrasadas'); }
+  function verDemandasArquivadas(){ ativarFiltroRapido('demandas', r=>r.status==='Finalizado', 'Finalizadas (arquivadas)'); }
   function filtroAgendaProximos7(){ ativarFiltroRapido('agenda', r=>r.status==='Programada' && daysDiff(r.dataProgramada)!==null && daysDiff(r.dataProgramada)>=0 && daysDiff(r.dataProgramada)<=7, 'Próximos 7 dias'); }
   function filtroAgendaAtrasadas(){ ativarFiltroRapido('agenda', r=>r.status==='Programada' && daysDiff(r.dataProgramada)!==null && daysDiff(r.dataProgramada)<0, 'Atrasadas'); }
+  function filtroAgendaProgramadas(){ filtrosAgenda.status='Programada'; switchView('agenda'); }
   function filtroOnbAndamento(){ const campos=['procuracoes','documentacao','openBank','certificado','configuracaoNFs']; ativarFiltroRapido('onb', r=>campos.some(c=>r[c]!=='Concluído'), 'Em andamento'); }
   function filtroRncGraves(){ ativarFiltroRapido('rnc', r=>r.classificacaoErro==='Grave', 'Graves'); }
   function filtroCertVencendo(){ ativarFiltroRapido('certificados', r=>{ const d=daysDiff(r.vencimentoCertificado); return d!==null && d>=0 && d<=30; }, 'Vencendo em 30 dias'); }
   function filtroCertVencidos(){ ativarFiltroRapido('certificados', r=>{ const d=daysDiff(r.vencimentoCertificado); return d!==null && d<0; }, 'Vencidos'); }
   function filtroOportunidadesAndamento(){ ativarFiltroRapido('oportunidades', r=>r.status==='Identificada'||r.status==='Em andamento', 'Em andamento'); }
+  function filtroOportunidadesConvertidas(){ ativarFiltroRapido('oportunidades', r=>r.status==='Convertida', 'Convertidas'); }
   function filtroRentabilidadeForaMeta(){ ativarFiltroRapido('rentabilidade', r=>{ const o=parseNum(r.horasOrcadas); const g=parseNum(r.horasGastas); if(o<=0) return false; return Math.abs((g-o)/o*100)>15; }, 'Fora da meta (+15%)'); }
 
   function renderMiniCards(key){
@@ -3250,7 +4545,8 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         const total = rows.length;
         const convertidas = rows.filter(r=>r.status==='Convertida').length;
         const emAndamento = rows.filter(r=>r.status==='Identificada'||r.status==='Em andamento').length;
-        return miniCardHtml('Convertidas', convertidas, `de ${total}`, 'green')
+        const conversao = total ? Math.round(convertidas/total*100) : 0;
+        return miniCardHtml('Taxa de conversão', conversao+'%', `${convertidas} de ${total}`, conversao>=30?'green':'', 'filtroOportunidadesConvertidas')
              + miniCardHtml('Em andamento', emAndamento, 'a trabalhar', '', 'filtroOportunidadesAndamento')
              + miniCardHtml('Total identificadas', total, 'oportunidades');
       }
@@ -3275,14 +4571,14 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         const finalizadas = rows.filter(r=>r.status==='Finalizado').length;
         return miniCardHtml('Em aberto', abertas, `${rows.length} no total`, '', 'filtroDemandasAbertas')
              + miniCardHtml('Atrasadas', atrasadas, 'prazo vencido', atrasadas>0?'red':'', 'filtroDemandasAtrasadas')
-             + miniCardHtml('Finalizadas', finalizadas, 'concluídas');
+             + miniCardHtml('Finalizadas (arquivadas)', finalizadas, 'clique para ver', '', 'verDemandasArquivadas');
       }
       case 'agenda': {
         const prog = rows.filter(r=>r.status==='Programada').length;
         const proximos7 = rows.filter(r=>r.status==='Programada' && daysDiff(r.dataProgramada)!==null && daysDiff(r.dataProgramada)>=0 && daysDiff(r.dataProgramada)<=7).length;
         const atrasadas = rows.filter(r=>r.status==='Programada' && daysDiff(r.dataProgramada)!==null && daysDiff(r.dataProgramada)<0).length;
         return miniCardHtml('Próximos 7 dias', proximos7, 'reuniões chegando', proximos7>0?'green':'', 'filtroAgendaProximos7')
-             + miniCardHtml('Programadas', prog, 'no total')
+             + miniCardHtml('Programadas', prog, 'no total', '', 'filtroAgendaProgramadas')
              + miniCardHtml('Atrasadas', atrasadas, 'passaram da data', atrasadas>0?'red':'', 'filtroAgendaAtrasadas');
       }
       case 'onb': {
@@ -3297,11 +4593,11 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       case 'rnc': {
         const total = rows.length;
         const graves = rows.filter(r=>r.classificacaoErro==='Grave').length;
-        const comMulta = rows.filter(r=>r.multa && r.multa!=='Não').length;
-        const totalMultas = rows.reduce((s,r)=>s+parseMoneyLike(r.valorMulta),0);
+        const totalAssescont = rows.filter(r=>r.multa && r.multa.startsWith('Sim - paga pela Assescont')).reduce((s,r)=>s+parseMoneyLike(r.valorMulta),0);
+        const totalCliente = rows.filter(r=>r.multa && r.multa.startsWith('Sim - paga pelo cliente')).reduce((s,r)=>s+parseMoneyLike(r.valorMulta),0);
         return miniCardHtml('RNC graves', graves, `de ${total} no total`, graves>0?'red':'green', 'filtroRncGraves')
-             + miniCardHtml('Com multa', comMulta, 'gerou multa')
-             + miniCardHtml('Total em multas', formatMoneyPlain(totalMultas), 'soma de todas', totalMultas>0?'red':'')
+             + miniCardHtml('Multas pagas pela Assescont', formatMoneyPlain(totalAssescont), 'custo dos nossos erros', totalAssescont>0?'red':'green')
+             + miniCardHtml('Multas pagas pelo cliente', formatMoneyPlain(totalCliente), 'não onerou o escritório')
              + miniCardHtml('Total registrado', total, 'histórico completo');
       }
       case 'certificados': {
@@ -3423,7 +4719,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     const honorario = honorarioComercial(registro);
     if(honorarioEl) honorarioEl.value = honorario ? formatMoney(honorario) : '—';
     if(horasEl){
-      horasEl.value = honorario ? (honorario/VALOR_HORA).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}) + ' horas (a R$ 80,00/h)' : '—';
+      horasEl.value = honorario ? (honorario/VALOR_HORA).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}) + ' horas (a R$ 180,00/h)' : '—';
     }
   }
 
@@ -3635,9 +4931,10 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     if(record.cpfSocioContratante) matriz.cpfResponsavelLegal = record.cpfSocioContratante;
     if(record.emailSocioContratante) matriz.emailResponsavelLegal = record.emailSocioContratante;
     if(record.regimeTributario && !matriz.regime) matriz.regime = record.regimeTributario;
-    // Honorário = calculado automaticamente pela planilha de orçamento (faturamento + funcionários + regime + filiais).
+    // Honorário = o que foi efetivamente enviado na proposta (se preenchido), senão o calculado
+    // automaticamente pela planilha de orçamento (faturamento + funcionários + regime + filiais).
     // Fica sempre na empresa da própria proposta, nunca nas filiais listadas dentro dela.
-    const honorarioCalculado = honorarioComercial(record);
+    const honorarioCalculado = honorarioEfetivoComercial(record);
     if(honorarioCalculado > 0 && (matriz.honorario===undefined || matriz.honorario==='' || matriz.honorario===0)){
       matriz.honorario = honorarioCalculado;
     }
@@ -3713,7 +5010,8 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     const nomeCliente = cliente ? cliente.razaoSocial : (record.razaoSocial || '');
     const cnpjCliente = cliente ? cliente.cnpj : (record.cnpj || '-');
     const regimeCliente = record.regimeTributario || (cliente && cliente.regime) || 'a definir';
-    const honorario = honorarioComercial(record);
+    // Honorário = o que foi efetivamente enviado (se preenchido manualmente), senão o calculado pela planilha.
+    const honorario = honorarioEfetivoComercial(record);
     const valorMensal = formatMoneyPlain(honorario);
     const horasComparativo = honorario ? (honorario/VALOR_HORA).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}) : '-';
     return `Prezado(a) ${nomeCliente},
@@ -3729,7 +5027,7 @@ Escopo da proposta:
 - Faturamento anual informado: ${record.faturamentoAnual ? formatMoneyPlain(record.faturamentoAnual) : '-'}
 - Nº de funcionários: ${record.funcionarios||'-'}
 - Honorário mensal sugerido (calculado pela planilha): ${valorMensal}
-- Comparativo em horas (a título de informação, R$ 80,00/h): ${horasComparativo} horas
+- Comparativo em horas (a título de informação, R$ 180,00/h): ${horasComparativo} horas
 - Competência de entrada prevista: ${record.competenciaEntrada||'a combinar'}
 
 Ficamos à disposição para esclarecer qualquer dúvida e seguimos no aguardo do retorno.
@@ -3745,7 +5043,8 @@ Equipe Assescont`;
       const nomeCliente = cliente ? cliente.razaoSocial : (record.razaoSocial || '-');
       const cnpjCliente = cliente ? cliente.cnpj : (record.cnpj || '-');
       const regimeCliente = record.regimeTributario || (cliente && cliente.regime) || 'a definir';
-      const honorario = honorarioComercial(record);
+      // Honorário = o que foi efetivamente enviado (se preenchido manualmente), senão o calculado pela planilha.
+      const honorario = honorarioEfetivoComercial(record);
       const horasComparativo = honorario ? (honorario/VALOR_HORA).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1}) : '-';
       const doc = new jspdf.jsPDF();
       try{ doc.addImage(LOGO_SRC, 'PNG', 15, 12, 16, 16); }catch(e){}
@@ -3771,7 +5070,7 @@ Equipe Assescont`;
       doc.setFont('helvetica','bold');
       doc.text(`Honorário mensal sugerido: ${formatMoneyPlain(honorario)}`, 15, y); y+=6;
       doc.setFont('helvetica','normal');
-      doc.text(`Comparativo em horas (a título de informação, R$ 80,00/h): ${horasComparativo} horas`, 15, y); y+=10;
+      doc.text(`Comparativo em horas (a título de informação, R$ 180,00/h): ${horasComparativo} horas`, 15, y); y+=10;
       doc.text(`Competência de entrada prevista: ${record.competenciaEntrada||'a combinar'}`, 15, y); y+=6;
 
       doc.setFontSize(8.5); doc.setTextColor(140);
@@ -3850,13 +5149,26 @@ Equipe Assescont`;
 
   // Monta o .docx a partir do modelo certo, já preenchido — devolve {name, type, data} (data URI),
   // pronto tanto para ficar salvo no registro (envio ao cliente) quanto para download imediato.
+  // Caracteres como & < > " ' são especiais no XML do Word — se um nome de cliente tiver "&"
+  // (ex: "Brum & Santos"), inserir sem escapar quebra o XML e o Word mostra erro de arquivo corrompido
+  // ao abrir. Escapa sempre antes de colocar qualquer texto dinâmico dentro do document.xml.
+  function escaparXml(texto){
+    return String(texto==null ? '' : texto)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+
   async function gerarDocxProposta(record){
     if(typeof JSZip === 'undefined') return null;
     if(!record.regimeTributario) return null;
     try{
       const cliente = getCliente(record.clienteId);
       const nomeCliente = (cliente ? cliente.razaoSocial : record.razaoSocial) || '[RAZÃO SOCIAL CLIENTE]';
-      const honorario = honorarioComercial(record);
+      // Honorário = o que foi efetivamente enviado (se preenchido manualmente), senão o calculado pela planilha.
+      const honorario = honorarioEfetivoComercial(record);
       const dataBase = record.dataEnvioProposta ? new Date(record.dataEnvioProposta+'T00:00:00') : new Date();
       const dia = String(dataBase.getDate());
       const mes = MESES_EXTENSO[dataBase.getMonth()];
@@ -3869,13 +5181,13 @@ Equipe Assescont`;
       const docPath = 'word/document.xml';
       let xml = await zip.file(docPath).async('string');
       xml = xml
-        .split('[RAZÃO SOCIAL CLIENTE]').join(nomeCliente)
-        .split('[DIA]').join(dia)
-        .split('[MÊS POR EXTENSO]').join(mes)
-        .split('[ANO]').join(ano)
-        .split('[ VALOR EM REAIS R$] ').join(valorReais + ' ')
-        .split('[ VALOR EM REAIS R$]').join(valorReais)
-        .split('[VALOR POR EXTENSO]').join(valorExtenso);
+        .split('[RAZÃO SOCIAL CLIENTE]').join(escaparXml(nomeCliente))
+        .split('[DIA]').join(escaparXml(dia))
+        .split('[MÊS POR EXTENSO]').join(escaparXml(mes))
+        .split('[ANO]').join(escaparXml(ano))
+        .split('[ VALOR EM REAIS R$] ').join(escaparXml(valorReais) + ' ')
+        .split('[ VALOR EM REAIS R$]').join(escaparXml(valorReais))
+        .split('[VALOR POR EXTENSO]').join(escaparXml(valorExtenso));
       zip.file(docPath, xml);
       const base64Out = await zip.generateAsync({ type:'base64', compression:'DEFLATE', compressionOptions:{ level:6 } });
       const nomeArquivo = 'Proposta_' + nomeCliente.replace(/[^\w]+/g,'_') + '.docx';
@@ -3938,6 +5250,9 @@ Equipe Assescont`;
     const sec = SECTIONS[editingSection];
     const isNew = !editingId;
     const record = editingId ? DATA[editingSection].find(r=>r.id===editingId) : { id: 'r'+Date.now()+Math.random().toString(16).slice(2) };
+    const honorarioAntesEdicao = (editingSection==='clientes' && !isNew) ? record.honorario : undefined;
+    const statusClienteAntes = (editingSection==='clientes' && !isNew) ? record.statusCliente : undefined;
+    const classificacaoAntes = (editingSection==='relacionamento' && !isNew) ? record.classificacao : undefined;
     for(const f of sec.fields){
       if(f.type==='filiaisDetalhado'){
         record[f.key] = coletarCnpjsFiliais();
@@ -3957,6 +5272,25 @@ Equipe Assescont`;
       } else {
         record[f.key] = el.value;
       }
+    }
+    if(editingSection==='clientes' && honorarioAntesEdicao!==undefined){
+      registrarMudancaHonorario(record.id, honorarioAntesEdicao, record.honorario, 'Edição manual');
+    }
+    if(editingSection==='clientes' && statusClienteAntes!==undefined && statusClienteAntes!==record.statusCliente){
+      DATA.historicoStatus.push({
+        id:'r'+Date.now()+Math.random().toString(16).slice(2),
+        clienteId: record.id, campo:'statusCliente',
+        valorAnterior: statusClienteAntes, valorNovo: record.statusCliente,
+        data: new Date().toISOString().slice(0,10)
+      });
+    }
+    if(editingSection==='relacionamento' && classificacaoAntes!==undefined && classificacaoAntes!==record.classificacao){
+      DATA.historicoStatus.push({
+        id:'r'+Date.now()+Math.random().toString(16).slice(2),
+        clienteId: record.clienteId, campo:'classificacao',
+        valorAnterior: classificacaoAntes, valorNovo: record.classificacao,
+        data: new Date().toISOString().slice(0,10)
+      });
     }
     if(editingSection==='clientes' && record.grupo && record.regime){
       const grupo = record.grupo.trim();
@@ -4026,7 +5360,98 @@ Equipe Assescont`;
       record._recorrenciaGerada = false;
     }
 
+    // Reunião marcada como "Realizada" na Agenda conta como interação de verdade — sem isso, o índice de
+    // relacionamento e o contador de "Interações (12m)" nunca enxergavam reuniões feitas pela Agenda.
+    if(editingSection==='agenda'){
+      if(record.status==='Realizada'){
+        const dadosHist = {
+          tipo:'Reunião',
+          data: record.dataProgramada || new Date().toISOString().slice(0,10),
+          assunto: 'Reunião'+(record.periodicidade?' ('+record.periodicidade+')':'')+' — registrada pela Agenda',
+          observacoes: record.observacoes||'',
+          clienteId: record.clienteId
+        };
+        let h = DATA.historico.find(x=>x.id===record.historicoGeradoId);
+        if(h){ Object.assign(h, dadosHist); }
+        else {
+          h = { id:'r'+Date.now()+Math.random().toString(16).slice(2), ...dadosHist };
+          DATA.historico.push(h);
+          record.historicoGeradoId = h.id;
+        }
+      } else if(record.historicoGeradoId){
+        // deixou de estar "Realizada" — remove a interação que tinha sido criada automaticamente por esse registro
+        DATA.historico = DATA.historico.filter(x=>x.id!==record.historicoGeradoId);
+        record.historicoGeradoId = null;
+      }
+      // Reunião agendada também vira um lembrete em Demandas, no dia dela — assim o campo Demanda
+      // mostra tudo que precisa ser feito no dia a dia, sem precisar olhar duas telas diferentes.
+      // Fecha o lembrete sozinho quando a reunião é realizada/cancelada (não precisa mais lembrar).
+      const cliente = getCliente(record.clienteId);
+      const ativoLembreteAgenda = (record.status==='Programada' || record.status==='Remarcada') && !!record.dataProgramada;
+      sincronizarDemandaLembrete('origemAgendaId', record.id, record.clienteId,
+        'Reunião agendada'+(record.periodicidade?' ('+record.periodicidade+')':'')+(cliente?' — '+cliente.razaoSocial:''),
+        record.dataProgramada, ativoLembreteAgenda);
+    }
+
+    // Prazo de retorno de uma proposta comercial também vira lembrete em Demandas, no dia esperado —
+    // fecha sozinho quando a proposta sai de "enviada/pendente" (foi aceita, recusada etc.).
+    if(editingSection==='comercial'){
+      const ativoLembreteComercial = (record.statusProposta==='Proposta enviada' || record.statusProposta==='Pendente') && !!record.prazoRetorno;
+      sincronizarDemandaLembrete('origemComercialId', record.id, record.clienteId,
+        'Follow-up da proposta — prazo de retorno do cliente ('+(record.razaoSocial||'')+')',
+        record.prazoRetorno, ativoLembreteComercial);
+    }
+
+    // Negociação de honorário nascida da Rentabilidade (ver negociarHonorarioSugerido): quando o cliente
+    // aceita (Convertida), o honorário é atualizado de verdade e fica registrado no histórico do cliente
+    // (mudança de honorário + interação). Quando recusa (Perdida), só fica registrada a tentativa.
+    if(editingSection==='oportunidades' && record.origemRentabilidadeId && !record._honorarioNegociacaoResolvida){
+      if(record.status==='Convertida'){
+        const cliente = getCliente(record.clienteId);
+        if(cliente){
+          const honorarioNovo = parseMoneyLike(record.honorarioBaseNegociacao) + parseMoneyLike(record.valorEstimado);
+          const honorarioAntigo = cliente.honorario;
+          registrarMudancaHonorario(cliente.id, honorarioAntigo, honorarioNovo, 'Negociação via Oportunidade');
+          cliente.honorario = honorarioNovo;
+          DATA.reajustes.push({
+            id: 'r'+Date.now()+Math.random().toString(16).slice(2),
+            clienteId: cliente.id,
+            data: new Date().toISOString().slice(0,10),
+            honorarioAnterior: parseMoneyLike(honorarioAntigo),
+            honorarioNovo,
+            margemLucroPercentual: '',
+            basesUtilizadas: 'Sugerido pela análise de rentabilidade e negociado com o cliente (oportunidade: '+(record.oportunidade||'')+').'
+          });
+          DATA.historico.push({
+            id: 'r'+Date.now()+Math.random().toString(16).slice(2)+'h',
+            tipo:'Negociação', data: new Date().toISOString().slice(0,10),
+            assunto: 'Honorário renegociado para '+formatMoneyPlain(honorarioNovo)+' (aceito pelo cliente)',
+            observacoes: '', clienteId: cliente.id
+          });
+          record._honorarioNegociacaoResolvida = true;
+        }
+      } else if(record.status==='Perdida'){
+        DATA.historico.push({
+          id: 'r'+Date.now()+Math.random().toString(16).slice(2)+'h',
+          tipo:'Negociação', data: new Date().toISOString().slice(0,10),
+          assunto: 'Cliente não aceitou a renegociação de honorário sugerida — honorário mantido.',
+          observacoes: '', clienteId: record.clienteId
+        });
+        record._honorarioNegociacaoResolvida = true;
+      }
+    }
+
     const secaoSalva = editingSection; // closeModal() zera editingSection — precisa guardar antes de usar
+    // Se houver um filtro de período ativo e a data deste registro cair fora dele, o registro fica
+    // salvo normalmente, mas alertas/dashboard/mini-cards não vão contar ele — sem avisar, isso parece
+    // um "sumiço" ou erro. Avisa e oferece limpar o filtro na hora.
+    let avisoPeriodo = null;
+    if(DATE_FIELD_MAP[secaoSalva] && (filtroInicio || filtroFim)){
+      const dataRegistro = getDataFiltro(secaoSalva, record);
+      if(dataRegistro && !dentroDoPeriodo(dataRegistro)){
+        avisoPeriodo = `Este registro (data ${new Date(dataRegistro+'T00:00:00').toLocaleDateString('pt-BR')}) ficou fora do filtro de período ativo (${filtroInicio?new Date(filtroInicio+'T00:00:00').toLocaleDateString('pt-BR'):'início'} até ${filtroFim?new Date(filtroFim+'T00:00:00').toLocaleDateString('pt-BR'):'hoje'}). Ele foi salvo normalmente, mas não vai aparecer nos indicadores do Dashboard até você limpar ou ajustar esse filtro.`;
+      }
+    }
     persist();
     closeModal();
     if(secaoSalva==='relacionamento'){ renderRelacionamentoTable(); }
@@ -4034,6 +5459,12 @@ Equipe Assescont`;
     else { renderTable(secaoSalva); }
     refreshMiniCards(secaoSalva);
     if(currentView==='dashboard') renderMain();
+    if(avisoPeriodo){
+      if(confirm(avisoPeriodo + '\n\nQuer limpar o filtro de período agora?')){
+        filtroInicio = ''; filtroFim = '';
+        if(currentView==='dashboard') renderMain(); else renderTable(secaoSalva);
+      }
+    }
   }
 
   function deleteRecord(key, id){
@@ -4339,6 +5770,7 @@ Equipe Assescont`;
         }
         if(existente){
           if(idAlvo && !existente.idExterno) existente.idExterno = idAlvo; // aproveita e já guarda o ID pra próximas importações
+          if(record.honorario!==undefined && record.honorario!=='') registrarMudancaHonorario(existente.id, existente.honorario, record.honorario, 'Importação');
           Object.keys(record).forEach(k=>{ if(k!=='id' && k!=='razaoSocial') existente[k] = record[k]; });
           atualizados++;
           return;

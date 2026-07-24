@@ -109,6 +109,7 @@
 
     try { if (typeof switchView === 'function') switchView('dashboard'); } catch (_) {}
     try { if (typeof checkLembretes === 'function') checkLembretes(); } catch (_) {}
+    try { if (typeof checarLembreteBackup === 'function') checarLembreteBackup(); } catch (_) {}
   }
 
   /* ---------------- API usada pela tela de login (index.html) ---------------- */
