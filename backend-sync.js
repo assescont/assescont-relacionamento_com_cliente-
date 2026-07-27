@@ -4,30 +4,29 @@
  * Login: tabela public."user" (função verify_login, bcrypt).
  * Dados: cada seção do app vira uma tabela em crm.* .
  *   - No login: carrega todas as tabelas e monta o objeto DATA (snake->camel).
- *   - Ao salvar (persist): compara DATA com o último estado carregado e envia
- *     só o que mudou, POR REGISTRO (upsert dos novos/alterados, delete dos
- *     removidos). Campos calculados não são gravados (não estão no mapa).
+ *   - Ao salvar (persist): diff por registro (upsert dos alterados, delete dos removidos).
  *
- * "Controle Pessoal" (acessos): fica só no navegador, nunca vai ao banco.
+ * "Controle Pessoal" (crm.acessos): sincronizado POR USUÁRIO (owner = e-mail do
+ * login) com usuario/senha CIFRADOS no navegador (AES-GCM). A chave de cifra é
+ * derivada da senha de login (PBKDF2) e NUNCA é gravada no banco. Assim, mesmo
+ * quem tiver a chave pública só vê texto cifrado, e cada um só decifra os seus.
  * ==========================================================================*/
 (function () {
   'use strict';
 
   var SUPABASE_URL      = 'https://ptinbolxxnphpsodlnyd.supabase.co';
   var SUPABASE_ANON_KEY = 'sb_publishable_rUF9NhYZZZfxqvY5Gaht9A_79CDHO7L';
-  var CRM_KEY   = 'assescont_crm_data_v2';   // cache local do app
+  var CRM_KEY   = 'assescont_crm_data_v2';
   var LOGIN_KEY = 'assescont_login';
-  var LOCAL_ONLY = ['acessos'];              // nunca sincroniza (senhas)
+  var VAULT_KEY = 'assescont_vault_k';
 
   if (!window.supabase || !window.supabase.createClient) {
     console.error('[backend-sync] supabase-js não carregou.'); return;
   }
   var _db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY).schema('crm');
-  var _auth = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); // rpc no schema public
+  var _auth = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  /* ---------------- Mapa de campos por seção ----------------
-     Cada entrada: { table, map: {campoCamel: 'coluna_snake'}, num:[], int:[], date:[], json:[], bool:[] }
-     Só colunas PERSISTIDAS entram no map (campos calculados ficam de fora). */
+  /* ---------------- Mapa de campos por seção ---------------- */
   var SCHEMA = {
     clientes: { table:'clientes',
       map:{ id:'id', cnpj:'cnpj', razaoSocial:'razao_social', grupo:'grupo', regime:'regime', funcionarios:'funcionarios',
@@ -122,7 +121,6 @@
   function toInt(v){ var n=toNum(v); return n==null?null:Math.trunc(n); }
   function toDate(v){ if(!v) return null; var s=String(v).slice(0,10); return /^\d{4}-\d{2}-\d{2}$/.test(s)?s:null; }
 
-  // registro camelCase (app) -> linha snake_case (banco)
   function toRow(sec, rec){
     var s=SCHEMA[sec], row={};
     var numS=new Set(s.num||[]), intS=new Set(s.int||[]), dateS=new Set(s.date||[]), jsonS=new Set(s.json||[]), boolS=new Set(s.bool||[]);
@@ -134,12 +132,11 @@
       else if(dateS.has(camel)) v=toDate(v);
       else if(boolS.has(camel)) v=!!v;
       else if(jsonS.has(camel)) v=(v===undefined?null:v);
-      else { if(v==='') v=null; } // texto vazio -> null
+      else { if(v==='') v=null; }
       row[col]=v;
     }
     return row;
   }
-  // linha snake_case (banco) -> registro camelCase (app)
   function fromRow(sec, row){
     var s=SCHEMA[sec], inv=invMap(s), jsonS=new Set(s.json||[]), boolS=new Set(s.bool||[]), rec={};
     for(var col in row){
@@ -147,9 +144,72 @@
       var v=row[col];
       if(boolS.has(camel)) rec[camel]=!!v;
       else if(jsonS.has(camel)) rec[camel]=(v==null?null:v);
-      else rec[camel]=(v==null?'':v);  // app espera strings; null -> ''
+      else rec[camel]=(v==null?'':v);
     }
     return rec;
+  }
+
+  /* ---------------- Criptografia da aba Controle Pessoal ---------------- */
+  var _vaultKey=null;
+  async function deriveKey(password, salt){
+    var enc=new TextEncoder();
+    var base=await crypto.subtle.importKey('raw', enc.encode(password), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey(
+      {name:'PBKDF2', salt:enc.encode('assescont|'+(salt||'')), iterations:150000, hash:'SHA-256'},
+      base, {name:'AES-GCM', length:256}, true, ['encrypt','decrypt']);
+  }
+  function b64enc(bytes){ var s=''; for(var i=0;i<bytes.length;i++) s+=String.fromCharCode(bytes[i]); return btoa(s); }
+  function b64dec(str){ var raw=atob(str), b=new Uint8Array(raw.length); for(var i=0;i<raw.length;i++) b[i]=raw.charCodeAt(i); return b; }
+  async function encStr(plain){
+    if(!_vaultKey || plain==null || plain==='') return (plain==null?null:plain);
+    var iv=crypto.getRandomValues(new Uint8Array(12));
+    var ct=await crypto.subtle.encrypt({name:'AES-GCM', iv:iv}, _vaultKey, new TextEncoder().encode(String(plain)));
+    var out=new Uint8Array(iv.length+ct.byteLength); out.set(iv,0); out.set(new Uint8Array(ct), iv.length);
+    return 'v1:'+b64enc(out);
+  }
+  async function decStr(data){
+    if(!data) return '';
+    if(String(data).slice(0,3)!=='v1:') return data;      // legado não cifrado
+    if(!_vaultKey) return '🔒';
+    try{
+      var bytes=b64dec(String(data).slice(3)), iv=bytes.slice(0,12), ct=bytes.slice(12);
+      var pt=await crypto.subtle.decrypt({name:'AES-GCM', iv:iv}, _vaultKey, ct);
+      return new TextDecoder().decode(pt);
+    }catch(e){ return '🔒'; }
+  }
+  async function storeVaultKey(){ try{ var raw=await crypto.subtle.exportKey('raw',_vaultKey); sessionStorage.setItem(VAULT_KEY, b64enc(new Uint8Array(raw))); }catch(e){} }
+  async function restoreVaultKey(){ try{ var b=sessionStorage.getItem(VAULT_KEY); if(!b) return; _vaultKey=await crypto.subtle.importKey('raw', b64dec(b), {name:'AES-GCM'}, true, ['encrypt','decrypt']); }catch(e){ _vaultKey=null; } }
+
+  // Controle Pessoal (acessos): load/sync por usuário, com usuario/senha cifrados.
+  var _snapAce={};
+  function takeSnapAce(){ _snapAce={}; (DATA.acessos||[]).forEach(function(r){ if(r&&r.id) _snapAce[r.id]=JSON.stringify(r); }); }
+  async function loadAcessos(email){
+    if(typeof DATA==='undefined' || !Array.isArray(DATA.acessos)) return;
+    if(!_vaultKey) return;   // cofre trancado (login sem senha): mantém o que estiver local
+    var res=await _db.from('acessos').select('*').eq('owner', email||'');
+    if(res.error) throw new Error('acessos: '+res.error.message);
+    var recs=[];
+    for(var i=0;i<(res.data||[]).length;i++){
+      var r=res.data[i];
+      recs.push({ id:r.id, sistema:r.sistema||'', categoria:r.categoria||'', link:r.link||'',
+        usuario: await decStr(r.usuario), senha: await decStr(r.senha), observacoes:r.observacoes||'' });
+    }
+    DATA.acessos=recs;
+  }
+  async function syncAcessos(email){
+    if(!_vaultKey) return;   // cofre trancado: não sincroniza (evita gravar em claro)
+    var atual=DATA.acessos||[], vistos={}, ups=[];
+    for(var i=0;i<atual.length;i++){
+      var r=atual[i]; if(!r||!r.id) continue; vistos[r.id]=true;
+      if(_snapAce[r.id]!==JSON.stringify(r)){
+        ups.push({ id:r.id, owner:email||null, sistema:r.sistema||null, categoria:r.categoria||null, link:r.link||null,
+          usuario: await encStr(r.usuario), senha: await encStr(r.senha), observacoes:r.observacoes||null });
+      }
+    }
+    var dels=Object.keys(_snapAce).filter(function(id){ return !vistos[id]; });
+    if(ups.length){ var u=await _db.from('acessos').upsert(ups,{onConflict:'id'}); if(u.error) throw new Error('acessos upsert: '+u.error.message); }
+    if(dels.length){ var d=await _db.from('acessos').delete().in('id',dels); if(d.error) throw new Error('acessos del: '+d.error.message); }
+    takeSnapAce();
   }
 
   /* ---------------- Carregamento ---------------- */
@@ -162,36 +222,21 @@
     }));
   }
 
-  /* ---------------- Snapshot / diff ---------------- */
   var _snap={};
   function takeSnapshot(){
     _snap={};
-    for(var sec in SCHEMA){
-      _snap[sec]={};
-      (DATA[sec]||[]).forEach(function(r){ if(r&&r.id) _snap[sec][r.id]=JSON.stringify(toRow(sec,r)); });
-    }
+    for(var sec in SCHEMA){ _snap[sec]={}; (DATA[sec]||[]).forEach(function(r){ if(r&&r.id) _snap[sec][r.id]=JSON.stringify(toRow(sec,r)); }); }
   }
   async function syncDiff(){
     for(var sec in SCHEMA){
-      var s=SCHEMA[sec], atual=DATA[sec]||[], snap=_snap[sec]||{};
-      var vistos={}, upserts=[];
-      atual.forEach(function(r){
-        if(!r||!r.id) return;
-        vistos[r.id]=true;
-        var row=toRow(sec,r), key=JSON.stringify(row);
-        if(snap[r.id]!==key) upserts.push(row);
-      });
+      var s=SCHEMA[sec], atual=DATA[sec]||[], snap=_snap[sec]||{}, vistos={}, upserts=[];
+      atual.forEach(function(r){ if(!r||!r.id) return; vistos[r.id]=true; var row=toRow(sec,r); if(snap[r.id]!==JSON.stringify(row)) upserts.push(row); });
       var deletes=Object.keys(snap).filter(function(id){ return !vistos[id]; });
-      if(upserts.length){
-        var up=await _db.from(s.table).upsert(upserts,{onConflict:'id'});
-        if(up.error) throw new Error('upsert '+sec+': '+up.error.message);
-      }
-      if(deletes.length){
-        var del=await _db.from(s.table).delete().in('id', deletes);
-        if(del.error) throw new Error('delete '+sec+': '+del.error.message);
-      }
+      if(upserts.length){ var up=await _db.from(s.table).upsert(upserts,{onConflict:'id'}); if(up.error) throw new Error('upsert '+sec+': '+up.error.message); }
+      if(deletes.length){ var del=await _db.from(s.table).delete().in('id', deletes); if(del.error) throw new Error('delete '+sec+': '+del.error.message); }
     }
     takeSnapshot();
+    await syncAcessos(window.crmBackend.email);
   }
 
   /* ---------------- Gravação (debounce) ---------------- */
@@ -215,10 +260,10 @@
     try{
       await loadAll();
       takeSnapshot();
+      try{ await loadAcessos(window.crmBackend.email); }catch(eAce){ console.warn('[backend-sync] acessos:',eAce); }
+      takeSnapAce();
       _ready=true;
-    }catch(e){
-      alert('Não consegui carregar os dados do servidor.\n\n'+(e.message||e)); return;
-    }
+    }catch(e){ alert('Não consegui carregar os dados do servidor.\n\n'+(e.message||e)); return; }
     try{ sessionStorage.setItem('assescont_user', nome); }catch(_){}
     var g=document.getElementById('gate'); if(g) g.classList.add('hidden');
     var b=document.getElementById('user-badge'); if(b) b.textContent=nome;
@@ -235,14 +280,15 @@
         if(res.error) return {ok:false,message:'Não foi possível verificar o login.'};
         var u=(res.data&&res.data.length)?res.data[0]:null;
         if(!u) return {ok:false,message:'E-mail ou senha incorretos.'};
+        try{ _vaultKey=await deriveKey(password, (u.email||email).toLowerCase()); await storeVaultKey(); }catch(e){ _vaultKey=null; }
         try{ localStorage.setItem(LOGIN_KEY, JSON.stringify({email:u.email,nome:u.nome})); }catch(_){}
         await startSession(u); return {ok:true};
       }catch(e){ return {ok:false,message:'Falha ao conectar.'}; }
     },
-    signOut: function(){ try{localStorage.removeItem(LOGIN_KEY);}catch(_){}; try{sessionStorage.removeItem('assescont_user');}catch(_){}; location.reload(); },
+    signOut: function(){ try{localStorage.removeItem(LOGIN_KEY);}catch(_){}; try{sessionStorage.removeItem('assescont_user');sessionStorage.removeItem(VAULT_KEY);}catch(_){}; location.reload(); },
     initSession: async function(){
       var saved=null; try{ saved=JSON.parse(localStorage.getItem(LOGIN_KEY)||'null'); }catch(_){}
-      if(saved&&saved.email) await startSession(saved);
+      if(saved&&saved.email){ await restoreVaultKey(); await startSession(saved); }
     }
   };
 })();
