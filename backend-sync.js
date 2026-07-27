@@ -24,7 +24,6 @@
     console.error('[backend-sync] supabase-js não carregou.'); return;
   }
   var _db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY).schema('crm');
-  var _auth = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   /* ---------------- Mapa de campos por seção ---------------- */
   var SCHEMA = {
@@ -276,7 +275,7 @@
     email:null,
     signIn: async function(email,password){
       try{
-        var res=await _auth.rpc('verify_login',{p_email:email,p_senha:password});
+        var res=await _db.rpc('verify_login',{p_email:email,p_senha:password});
         if(res.error) return {ok:false,message:'Não foi possível verificar o login.'};
         var u=(res.data&&res.data.length)?res.data[0]:null;
         if(!u) return {ok:false,message:'E-mail ou senha incorretos.'};
