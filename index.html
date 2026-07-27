@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Assescont · Relacionamento</title>
-<!-- Back-end: login (tabela user) + armazenamento no banco (Supabase). -->
+<!-- Back-end: login + acesso ao banco via gateway (Supabase, schema crm). -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="backend-sync.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;700&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
@@ -137,6 +137,14 @@ const DOCX_TEMPLATES_B64 = {
 
   /* TABLE */
   .table-wrap { background: var(--dark); border: 1px solid rgba(217,184,150,0.1); border-radius: 12px; overflow: hidden; margin-bottom: 20px; overflow-x:auto; }
+  /* Barra de rolagem espelhada no topo da tabela — pra rolar de lado sem precisar descer até o fim do
+     conteúdo pra achar a barra de baixo. Só aparece (via JS) quando a tabela é mais larga que a tela. */
+  .table-scroll-top { overflow-x: auto; overflow-y: hidden; height: 14px; margin-bottom: 6px; border-radius: 6px; display: none; }
+  .table-scroll-top-inner { height: 1px; }
+  th.th-sticky, td.td-sticky { position: sticky; background: #222325; z-index: 2; }
+  th.th-sticky { background: #3a322d; z-index: 3; }
+  tbody tr:hover td.td-sticky { background: #2c2928; }
+  td.td-sticky.sticky-edge, th.th-sticky.sticky-edge { box-shadow: 4px 0 6px -4px rgba(0,0,0,0.5); }
   table { width: 100%; border-collapse: collapse; }
   thead tr { background: rgba(156,111,78,0.2); }
   th { padding: 11px 14px; text-align: left; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--teal-light); white-space:nowrap; }
@@ -478,9 +486,16 @@ const DOCX_TEMPLATES_B64 = {
     <div class="modal-title" id="cliente-view-title">Cliente</div>
     <button class="modal-close" onclick="closeClienteView()">✕</button>
     <div id="cliente-view-body" style="overflow-y:auto;flex:1"></div>
-    <div class="modal-footer">
+    <div class="modal-footer" style="flex-wrap:wrap;gap:8px">
       <button class="btn btn-ghost" onclick="closeClienteView()">Fechar</button>
       <button class="btn btn-ghost" id="cliente-view-pdf-btn">🧾 Exportar PDF</button>
+      <select id="cliente-view-projeto-tipo" style="background:rgba(23,24,26,0.7);border:1px solid rgba(217,184,150,0.2);border-radius:8px;padding:0 8px;color:#fff;font-size:.8rem">
+        <option value="Certificado Digital">Certificado Digital</option>
+        <option value="Open Finance">Open Finance</option>
+        <option value="NF de Saída">NF de Saída</option>
+      </select>
+      <button class="btn btn-ghost" id="cliente-view-projeto-btn">📁 Enviar para Projeto</button>
+      <button class="btn btn-ghost" id="cliente-view-oport-btn">🎯 Enviar para Oportunidades</button>
       <button class="btn btn-primary" id="cliente-view-edit-btn">Editar cliente</button>
     </div>
   </div>
@@ -998,7 +1013,8 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         {key:'propostaPdf', label:'Proposta gerada (PDF) — gerada automaticamente, pode substituir', shortLabel:'Proposta (PDF)', type:'file'},
         {key:'propostaDocx', label:'Proposta em Word (.docx) — gerada automaticamente, pronta para envio ao cliente', shortLabel:'Proposta (Word)', type:'file'}
       ],
-      columns:['numeroProposta','clienteId','statusProposta','dataGanho','tempoConversao','regimeTributario','faturamentoAnual','funcionarios','honorarioCalculado','honorarioEnviado','horasComparativo','cnpjsFiliais','competenciaEntrada','propostaDocx']
+      columns:['numeroProposta','clienteId','statusProposta','dataGanho','tempoConversao','regimeTributario','faturamentoAnual','funcionarios','honorarioCalculado','honorarioEnviado','horasComparativo','cnpjsFiliais','competenciaEntrada','propostaDocx'],
+      stickyCols: 3
     },
 
     onb: {
@@ -1085,7 +1101,8 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         {key:'proximaRenovacao', label:'Próxima renovação', type:'date'},
         {key:'baseConhecimento', label:'Base de conhecimento (observações livres, preferências, informações estratégicas)', type:'textarea'}
       ],
-      columns:['razaoSocial','cnpj','grupo','statusCliente','divisaoChip','cidadeUf','regime','competenciaEntrada','honorario']
+      columns:['razaoSocial','cnpj','idExterno','grupo','statusCliente','divisaoChip','cidadeUf','regime','competenciaEntrada','honorario'],
+      stickyCols: 1
     },
 
     relacionamento: {
@@ -1112,7 +1129,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         {key:'data', label:'Data', type:'date'},
         {key:'valorEstimado', label:'Valor estimado', type:'currency'},
         {key:'responsavel', label:'Responsável', type:'text'},
-        {key:'status', label:'Status', type:'select', options:['Identificada','Em andamento','Convertida','Perdida'], chipMap:{'Identificada':'teal','Em andamento':'orange','Convertida':'green','Perdida':'red'}}
+        {key:'status', label:'Status', type:'select', options:['Identificada','Pendente','Em andamento','Convertida','Perdida'], chipMap:{'Identificada':'teal','Pendente':'purple','Em andamento':'orange','Convertida':'green','Perdida':'red'}}
       ],
       columns:['clienteId','oportunidade','status','valorEstimado','data']
     },
@@ -1133,17 +1150,17 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     },
 
     certificados: {
-      label:'Certificados', icon:'🏦',
-      title:'Certificados / Open Bank / NF de saída',
-      subtitle:'Controle de vencimentos e acessos',
+      label:'Projetos', icon:'📁',
+      title:'Projetos',
+      subtitle:'Certificado digital, Open Finance e NF de saída — um projeto por cliente, com status e prazo',
       fields:[
         {key:'clienteId', label:'Cliente', type:'clientRef', required:true},
-        {key:'bancos', label:'Bancos (Open Bank)', type:'text'},
-        {key:'certificados', label:'Certificados', type:'text'},
-        {key:'vencimentoCertificado', label:'Vencimento do certificado', type:'date'},
-        {key:'nfSaida', label:'NF de saída', type:'select', options:['Configurada','Pendente','Não se aplica']}
+        {key:'tipoProjeto', label:'Tipo de projeto', type:'select', options:['Certificado Digital','Open Finance','NF de Saída'], required:true, chipMap:{'Certificado Digital':'teal','Open Finance':'purple','NF de Saída':'orange'}},
+        {key:'status', label:'Status', type:'select', options:['Não iniciado','Em andamento','Concluído'], chipMap:{'Não iniciado':'gray','Em andamento':'orange','Concluído':'green'}},
+        {key:'prazo', label:'Prazo (vencimento do certificado, ou data alvo do projeto)', shortLabel:'Prazo', type:'date'},
+        {key:'observacoes', label:'Observações', type:'textarea'}
       ],
-      columns:['clienteId','bancos','vencimentoCertificado','nfSaida']
+      columns:['clienteId','tipoProjeto','status','prazo','observacoes']
     },
 
     rentabilidade: {
@@ -1153,9 +1170,20 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       fields:[
         {key:'clienteId', label:'Cliente', type:'clientRef', required:true},
         {key:'competencia', label:'Competência (ex: 07/2026)', type:'text', required:true},
-        {key:'faturamentoContratado', label:'Faturamento contratado (mensal — faturamento anual do Comercial ÷ 12)', shortLabel:'Fat. contratado', type:'computed', compute:(r)=>{ const com = DATA.comercial.find(c=>c.clienteId===r.clienteId); return (com && com.faturamentoAnual) ? formatMoney(parseNum(com.faturamentoAnual)/12) : '—'; }},
+        {key:'faturamentoContratado', label:'Faturamento contratado (mensal — do Comercial ÷ 12, ou do cadastro do cliente se não houver proposta)', shortLabel:'Fat. contratado', type:'computed', compute:(r)=>{
+          const com = DATA.comercial.find(c=>c.clienteId===r.clienteId);
+          if(com && com.faturamentoAnual) return formatMoney(parseNum(com.faturamentoAnual)/12);
+          const c = getCliente(r.clienteId);
+          if(c && c.faturamento) return formatMoney(parseNum(c.faturamento)/12);
+          return '—';
+        }},
         {key:'faturamentoAtual', label:'Faturamento atual (import. Domínio)', shortLabel:'Fat. atual', type:'currency'},
-        {key:'funcionariosContratado', label:'Nº de funcionários contratado (Comercial)', shortLabel:'Func. contratado', type:'computed', compute:(r)=>{ const com = DATA.comercial.find(c=>c.clienteId===r.clienteId); return (com && com.funcionarios) ? com.funcionarios : '—'; }},
+        {key:'funcionariosContratado', label:'Nº de funcionários contratado (do Comercial, ou do cadastro do cliente se não houver proposta)', shortLabel:'Func. contratado', type:'computed', compute:(r)=>{
+          const com = DATA.comercial.find(c=>c.clienteId===r.clienteId);
+          if(com && com.funcionarios) return com.funcionarios;
+          const c = getCliente(r.clienteId);
+          return (c && c.funcionarios) ? c.funcionarios : '—';
+        }},
         {key:'funcionariosAtual', label:'Nº de funcionários atual (import. Domínio)', shortLabel:'Func. atual', type:'number'},
         {key:'horasOrcadas', label:'Horas orçadas/contratadas', type:'number'},
         {key:'horasGastas', label:'Horas gastas (import. Domínio)', type:'number'},
@@ -1193,7 +1221,8 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         }},
         {key:'observacoes', label:'Observações', type:'textarea'}
       ],
-      columns:['clienteId','grupoCliente','competencia','faturamentoContratado','faturamentoAtual','desvioFaturamento','funcionariosContratado','funcionariosAtual','horasOrcadas','horasGastas','desvio','valorHoraCobrado','custoEstimadoHoras','desvioReais','ajusteSugeridoHonorario','honorarioSugerido']
+      columns:['clienteId','grupoCliente','competencia','faturamentoContratado','faturamentoAtual','desvioFaturamento','funcionariosContratado','funcionariosAtual','horasOrcadas','horasGastas','desvio','valorHoraCobrado','custoEstimadoHoras','desvioReais','ajusteSugeridoHonorario','honorarioSugerido'],
+      stickyCols: 1
     },
 
     rnc: {
@@ -1432,7 +1461,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     demandas: 'dataRecebida',
     rnc: 'data',
     agenda: 'dataProgramada',
-    certificados: 'vencimentoCertificado',
+    certificados: 'prazo',
     oportunidades: 'data',
     clientes: 'dataAssinaturaContrato',
     onb: '__cliente_dataAssinatura__',
@@ -1443,6 +1472,15 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     const m = String(comp||'').match(/(\d{1,2})\s*\/\s*(\d{4})/);
     if(!m) return null;
     return `${m[2]}-${m[1].padStart(2,'0')}-01`;
+  }
+
+  // Normaliza qualquer competência escrita como MM/AAAA (tolera "7/2026", "07/2026", espaços extras)
+  // pro formato fixo "MM/AAAA" — usado sempre que for comparar/agrupar por competência, pra não perder
+  // registro por causa de formato diferente (o campo é texto livre, não hoje uma máscara).
+  function normalizarCompetencia(comp){
+    const m = String(comp||'').match(/(\d{1,2})\s*\/\s*(\d{4})/);
+    if(!m) return null;
+    return String(parseInt(m[1],10)).padStart(2,'0')+'/'+m[2];
   }
 
   function getDataFiltro(key, record){
@@ -1749,6 +1787,10 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     const sec = SECTIONS[currentView];
     main.innerHTML = renderSectionView(currentView, sec);
     renderTable(currentView);
+    if(currentView==='rentabilidade'){
+      aplicarColunasFixas('rentabilidade', 'tbody-rentabilidade-historico', 1);
+      configurarScrollTopoTabela('rentabilidade', 'tablewrap-rentabilidade-historico', 'scrolltop-rentabilidade-historico', 'scrolltop-inner-rentabilidade-historico');
+    }
   }
 
   let mapaZoom = 1;
@@ -2036,7 +2078,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         if(path) path.classList.add('estado-com-cliente');
         const cidades = [...new Set(clientesEstado.map(c=>c.cidade).filter(Boolean))];
         titleEl.textContent = `${a.getAttribute('name')}: ${clientesEstado.length} cliente(s)${cidades.length ? ' — ' + cidades.slice(0,5).join(', ') + (cidades.length>5?'…':'') : ''}`;
-        a.onclick = function(){ filtrosClientes = {status:'Ativo', regime:'', estado:uf, grupo:''}; switchView('clientes'); };
+        a.onclick = function(){ filtrosClientes = {status:'Ativo', regime:'', estado:uf, grupo:'', anoEntrada:'', mesEntrada:''}; switchView('clientes'); };
       } else {
         titleEl.textContent = `${a.getAttribute('name')}: nenhum cliente cadastrado`;
         a.onclick = null;
@@ -2104,14 +2146,33 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     // enviado quando preenchido, senão o calculado pela planilha.
     const propostasEmAberto = comercialFiltrado.filter(d=>d.statusProposta==='Proposta enviada' || d.statusProposta==='Pendente');
     const previsaoPipeline = propostasEmAberto.reduce((s,d)=>s+honorarioEfetivoComercial(d),0);
-    const fechadoPorCompetencia = {};
-    comercialFiltrado.filter(d=>d.statusProposta==='Aceita').forEach(d=>{
-      const comp = d.competenciaEntrada || 'Sem competência';
-      fechadoPorCompetencia[comp] = (fechadoPorCompetencia[comp]||0) + honorarioComercial(d);
+    // Últimos 13 meses (mês atual incluso), agrupado pela competência de contrato do cliente/proposta —
+    // 13 em vez de 12 pra dar pra comparar o mesmo mês do ano anterior (ex: 07/2025 vs 07/2026).
+    // Valor = honorário efetivo da proposta aceita (enviado, senão calculado); sem dado no mês, fica zerado.
+    // Usa normalizarCompetencia() em vez de comparar string exata, pra não perder registro por causa de
+    // formato diferente (ex: "7/2026" sem zero à esquerda, ou espaço extra).
+    const ultimos13Meses = [];
+    for(let i=12; i>=0; i--){
+      const ref = new Date(anoAtual, mesAtual-i, 1);
+      const mm = String(ref.getMonth()+1).padStart(2,'0'), yyyy = ref.getFullYear();
+      ultimos13Meses.push(mm+'/'+yyyy);
+    }
+    const receitaPorMes = {}, qtdPorMes = {};
+    ultimos13Meses.forEach(m=>{ receitaPorMes[m]=0; qtdPorMes[m]=0; });
+    DATA.comercial.filter(d=>d.statusProposta==='Aceita').forEach(d=>{
+      const comp = normalizarCompetencia(d.competenciaEntrada);
+      if(comp && receitaPorMes.hasOwnProperty(comp)){ receitaPorMes[comp] += honorarioEfetivoComercial(d); qtdPorMes[comp] += 1; }
     });
-    const competenciasOrdenadas = Object.keys(fechadoPorCompetencia).sort();
-    const maxFechado = Math.max(1, ...competenciasOrdenadas.map(c=>fechadoPorCompetencia[c]));
-    const totalFechadoPeriodo = competenciasOrdenadas.reduce((s,c)=>s+fechadoPorCompetencia[c],0);
+    const maxReceitaMes = Math.max(1, ...ultimos13Meses.map(m=>receitaPorMes[m]));
+    // Mesma janela de 13 meses, mas pela base de Clientes (competência de entrada do cadastro) — pode
+    // diferir da quantidade de contratos ao lado (um contrato pode trazer matriz + filiais = vários clientes).
+    const clientesPorMes = {};
+    ultimos13Meses.forEach(m=>clientesPorMes[m]=0);
+    DATA.clientes.forEach(c=>{
+      const comp = normalizarCompetencia(c.competenciaEntrada);
+      if(comp && clientesPorMes.hasOwnProperty(comp)) clientesPorMes[comp] += 1;
+    });
+    const maxClientesMes = Math.max(1, ...ultimos13Meses.map(m=>clientesPorMes[m]));
 
     // ---- Resultado do setor: indicadores que representam o desempenho do relacionamento como um todo ----
     const totalClientesRetencao = DATA.clientes.filter(c=>c.statusCliente==='Ativo'||c.statusCliente==='Cancelado').length || 1;
@@ -2142,6 +2203,17 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     const totalIdx = DATA.relacionamento.length || 1;
     const idxDist = classes.map(c=>{ const n = DATA.relacionamento.filter(d=>d.classificacao===c).length; return { label:c, n, pct: Math.round(n/totalIdx*100) }; });
 
+    // ---- Receita nova (mês/período): novos contratos (honorário das propostas aceitas) + cross-sell convertido ----
+    const compAtualStr = String(mesAtual+1).padStart(2,'0')+'/'+anoAtual;
+    const propostasNovosContratos = DATA.comercial.filter(d=>{
+      if(d.statusProposta!=='Aceita') return false;
+      const comp = normalizarCompetencia(d.competenciaEntrada);
+      if(periodoAtivo) return dentroDoPeriodo(competenciaParaData(d.competenciaEntrada));
+      return comp === compAtualStr;
+    });
+    const honorarioNovosContratos = propostasNovosContratos.reduce((s,d)=>s+honorarioEfetivoComercial(d),0);
+    const receitaNova = honorarioNovosContratos + valorOportunidadesConvertidas;
+
     return `
       <div class="view-title">📊 Dashboard do Gestor <small>clique em um card para abrir a aba</small></div>
       ${renderFiltroPeriodo()}
@@ -2155,32 +2227,48 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         <div class="sum-card clickable" onclick="switchView('comercial')"><div class="sc-label">Propostas enviadas${periodoAtivo?' (período)':''}</div><div class="sc-num">${propostasEnviadas}</div><div class="sc-sub">${periodoAtivo?'no período selecionado':'total histórico'}</div></div>
       </div>
 
-      <div class="bars-card" style="margin-bottom:20px">
-        <h3 style="display:flex;align-items:center;justify-content:space-between;gap:10px">
-          <span>📌 Resultado do setor${periodoAtivo?' — período selecionado':''}</span>
-          <button class="btn btn-ghost" style="font-size:.72rem;padding:5px 10px" onclick="exportarRelatorioExecutivoPdf()" title="PDF consolidado com os destaques de Dashboard, Comercial, Rentabilidade e RNC">📑 Relatório executivo (PDF)</button>
-        </h3>
-        <p style="color:var(--gray2);font-size:.78rem;margin-bottom:12px">Indicadores que representam o desempenho geral do relacionamento com a carteira — não só volume de atividade.</p>
-        <div class="mini-cards">
-          ${miniCardHtml('Taxa de retenção', taxaRetencao+'%', `${clientesAtivos} ativos de ${totalClientesRetencao}`, taxaRetencao>=90?'green':(taxaRetencao>=75?'orange':'red'), 'switchViewClientes')}
-          ${miniCardHtml('Índice médio da carteira', indiceMedioCarteira!==null ? indiceMedioCarteira.toFixed(1) : '—', 'saúde do relacionamento', indiceMedioCarteira!==null ? (indiceMedioCarteira>=7?'green':(indiceMedioCarteira>=4?'orange':'red')) : '', 'switchViewRelacionamento')}
-          ${miniCardHtml('Conversão comercial', conversaoComercial+'%', `${comercialFiltrado.filter(d=>d.statusProposta==='Aceita').length} de ${comercialFiltrado.length} propostas`, conversaoComercial>=40?'green':'', 'switchViewComercial')}
-          ${miniCardHtml('Cross-sell convertido', formatMoneyPlain(valorOportunidadesConvertidas), 'oportunidades no período', valorOportunidadesConvertidas>0?'green':'', 'switchViewOportunidades')}
-          ${miniCardHtml('Ganho com reajustes', (ganhoReajustes>=0?'+':'')+formatMoneyPlain(ganhoReajustes), 'honorário renegociado no período', ganhoReajustes>0?'green':(ganhoReajustes<0?'red':''))}
-          ${miniCardHtml('RNC por cliente ativo', (rncPorCliente*100).toFixed(2)+'%', `${rncFiltrado.length} registro(s) no período`, rncPorCliente<=0.1?'green':(rncPorCliente<=0.3?'orange':'red'), 'switchViewRnc')}
-          ${miniCardHtml('Multas pagas pela Assescont', formatMoneyPlain(multasAssescontFiltrado), 'custo dos erros no período', multasAssescontFiltrado>0?'red':'green', 'switchViewRnc')}
-          ${miniCardHtml('Previsão em propostas (pipeline)', formatMoneyPlain(previsaoPipeline), `${propostasEmAberto.length} proposta(s) em aberto — planejamento`, previsaoPipeline>0?'green':'', 'switchViewComercial')}
+      <div class="bars-card clickable" onclick="switchView('comercial')" style="cursor:pointer;border:1px solid rgba(93,232,160,0.3);margin-bottom:20px">
+        <h3 style="margin-bottom:10px">💰 Receita nova${periodoAtivo?' — período selecionado':' (mês)'}</h3>
+        <div style="font-size:2.1rem;font-weight:700;color:#5de8a0;line-height:1.2">${formatMoneyPlain(receitaNova)}</div>
+        <div style="display:flex;gap:26px;margin-top:10px;flex-wrap:wrap">
+          <div style="font-size:.78rem;color:var(--gray2)">Novos contratos: <b style="color:var(--white)">${formatMoneyPlain(honorarioNovosContratos)}</b></div>
+          <div style="font-size:.78rem;color:var(--gray2)">Cross-sell: <b style="color:var(--white)">${formatMoneyPlain(valorOportunidadesConvertidas)}</b></div>
         </div>
       </div>
 
-      <div class="bars-card clickable" onclick="switchView('comercial')" style="cursor:pointer">
-        <h3>💰 Valor fechado por competência (propostas aceitas)${periodoAtivo?' — período selecionado':''}</h3>
-        ${competenciasOrdenadas.length===0 ? '<p style="color:var(--gray1);font-size:.8rem">Nenhuma proposta aceita nesse período.</p>' : `
-          ${competenciasOrdenadas.map(c=>`
-          <div class="bar-row"><div class="bar-label">${c}</div><div class="bar-track"><div class="bar-fill" style="width:${Math.round(fechadoPorCompetencia[c]/maxFechado*100)}%"></div></div><div class="bar-val" style="width:110px">${formatMoney(fechadoPorCompetencia[c])}</div></div>`).join('')}
-          ${competenciasOrdenadas.length>1 ? `<p style="color:var(--gray2);font-size:.78rem;margin-top:8px">Total no período: <b>${formatMoney(totalFechadoPeriodo)}</b></p>` : ''}
-        `}
-        <p style="color:var(--gray1);font-size:.68rem;margin-top:8px">Use o filtro de período acima para ver só uma competência (ex: defina De = 01/07/2026 e Até = 31/07/2026 para ver só julho/2026).</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+        <div class="bars-card clickable" onclick="switchView('comercial')" style="cursor:pointer">
+          <h3>💰 Novos contratos — valor (13 meses)</h3>
+          ${ultimos13Meses.map(m=>`
+            <div class="bar-row"><div class="bar-label">${m}</div><div class="bar-track"><div class="bar-fill" style="width:${Math.round(receitaPorMes[m]/maxReceitaMes*100)}%"></div></div><div class="bar-val" style="width:150px">${formatMoney(receitaPorMes[m])} <span style="color:var(--gray1);font-weight:400">(${qtdPorMes[m]})</span></div></div>`).join('')}
+          <p style="color:var(--gray1);font-size:.68rem;margin-top:8px">Valor do honorário das propostas aceitas por competência; número entre parênteses é a quantidade de contratos.</p>
+        </div>
+        <div class="bars-card clickable" onclick="switchView('clientes')" style="cursor:pointer">
+          <h3>👥 Clientes novos — quantidade (13 meses)</h3>
+          ${ultimos13Meses.map(m=>`
+            <div class="bar-row"><div class="bar-label">${m}</div><div class="bar-track"><div class="bar-fill" style="width:${Math.round(clientesPorMes[m]/maxClientesMes*100)}%"></div></div><div class="bar-val" style="width:60px">${clientesPorMes[m]}</div></div>`).join('')}
+          <p style="color:var(--gray1);font-size:.68rem;margin-top:8px">Pega da base de Clientes (competência de entrada do cadastro) — pode diferir da quantidade de contratos ao lado quando um contrato traz matriz + filiais (vários clientes de um só fechamento).</p>
+        </div>
+      </div>
+
+      <div class="bars-card" style="margin-bottom:20px">
+        <h3 style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+          <span>Visão geral${periodoAtivo?' — período selecionado':''}</span>
+          <button class="btn btn-ghost" style="font-size:.72rem;padding:5px 10px" onclick="exportarRelatorioExecutivoPdf()" title="PDF consolidado com os destaques de Dashboard, Comercial, Rentabilidade e RNC">📑 Relatório executivo (PDF)</button>
+        </h3>
+        <div style="color:var(--teal-light);font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">📈 Comercial</div>
+        <div class="mini-cards">
+          ${miniCardHtml('Conversão comercial', conversaoComercial+'%', `${comercialFiltrado.filter(d=>d.statusProposta==='Aceita').length} de ${comercialFiltrado.length} propostas`, conversaoComercial>=40?'green':'', 'switchViewComercial')}
+          ${miniCardHtml('Previsão em propostas (pipeline)', formatMoneyPlain(previsaoPipeline), `${propostasEmAberto.length} proposta(s) em aberto — planejamento`, previsaoPipeline>0?'green':'', 'switchViewComercial')}
+          ${miniCardHtml('Ganho com reajustes', (ganhoReajustes>=0?'+':'')+formatMoneyPlain(ganhoReajustes), 'honorário renegociado no período', ganhoReajustes>0?'green':(ganhoReajustes<0?'red':''))}
+        </div>
+        <div style="color:var(--teal-light);font-size:.72rem;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin:16px 0 8px">🤝 Relacionamento e carteira</div>
+        <div class="mini-cards">
+          ${miniCardHtml('Taxa de retenção', taxaRetencao+'%', `${clientesAtivos} ativos de ${totalClientesRetencao}`, taxaRetencao>=90?'green':(taxaRetencao>=75?'orange':'red'), 'switchViewClientes')}
+          ${miniCardHtml('Índice médio da carteira', indiceMedioCarteira!==null ? indiceMedioCarteira.toFixed(1) : '—', 'saúde do relacionamento', indiceMedioCarteira!==null ? (indiceMedioCarteira>=7?'green':(indiceMedioCarteira>=4?'orange':'red')) : '', 'switchViewRelacionamento')}
+          ${miniCardHtml('RNC por cliente ativo', (rncPorCliente*100).toFixed(2)+'%', `${rncFiltrado.length} registro(s) no período`, rncPorCliente<=0.1?'green':(rncPorCliente<=0.3?'orange':'red'), 'switchViewRnc')}
+          ${miniCardHtml('Multas pagas pela Assescont', formatMoneyPlain(multasAssescontFiltrado), 'custo dos erros no período', multasAssescontFiltrado>0?'red':'green', 'switchViewRnc')}
+        </div>
       </div>
 
       <div class="bars-card clickable" onclick="switchView('comercial')" style="cursor:pointer">
@@ -2208,7 +2296,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     const importLabel = key==='clientes' ? '📥 Importar clientes (Excel/CSV)' : '📥 Importar por CNPJ (Excel/CSV)';
     let extra = '';
     let extraRodape = '';
-    if(key==='rentabilidade') extra = renderRentabilidadeResumo();
+    if(key==='rentabilidade') extra = renderCapacidadeOperacional() + renderRentabilidadeHistorico() + renderRentabilidadeResumo();
     if(key==='agenda'){ extra = renderAgendaProximosMeses(); extraRodape = renderAgendaAlertas(); }
     if(key==='oportunidades') extra = renderOportunidadesResumo();
     if(key==='rnc') extra = renderRncResumo();
@@ -2219,6 +2307,8 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       ${temFiltroPeriodo ? renderFiltroPeriodo() : ''}
       ${key==='clientes' ? renderFiltrosClientes() : ''}
       ${key==='agenda' ? renderFiltrosAgenda() : ''}
+      ${key==='rentabilidade' ? renderFiltrosRentabilidade() : ''}
+      ${key==='certificados' ? renderFiltrosProjetos() : ''}
       <div class="mini-cards" id="mini-${key}">${renderMiniCards(key)}</div>
       ${extra}
       ${quickFilter.key===key ? `<div style="margin-bottom:14px"><span class="chip chip-teal">Filtro: ${quickFilter.label} <button type="button" onclick="limparFiltroRapido()" style="background:none;border:none;color:inherit;cursor:pointer;margin-left:4px">✕</button></span></div>` : ''}
@@ -2229,14 +2319,19 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         <input type="file" id="import-file-${key}" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleImportFile(event,'${key}')">
         ${key==='demandas' ? `<button class="btn btn-ghost" onclick="enviarPendenciasTeams()">📨 Enviar pendências ao Teams</button>` : ''}
         ${key==='demandas' ? `<button class="btn btn-ghost" onclick="toggleMostrarDemandasConcluidas()" title="Demandas concluídas ficam arquivadas (fora da lista) por padrão, pra não poluir o controle">${mostrarDemandasConcluidas ? '📦 Ocultar concluídas' : '📦 Mostrar concluídas'}</button>` : ''}
+        ${key==='comercial' ? `<button class="btn btn-ghost" onclick="toggleMostrarComercialAceitas()" title="Propostas aceitas ficam arquivadas (fora da lista) por padrão, pra não poluir o controle conforme o volume de propostas cresce">${mostrarComercialAceitas ? '📦 Ocultar aceitas' : '📦 Mostrar aceitas'}</button>` : ''}
+        ${key==='certificados' ? `<button class="btn btn-ghost" onclick="toggleMostrarProjetosConcluidos()" title="Projeto concluído fica arquivado (fora da lista) por padrão, pra não poluir a fila de trabalho">${mostrarProjetosConcluidos ? '📦 Ocultar concluídos' : '📦 Mostrar concluídos'}</button>` : ''}
         ${key==='clientes' ? `<button class="btn btn-ghost" onclick="acionarDeteccaoGruposPorCnpj()" title="Agrupa automaticamente empresas com o mesmo CNPJ raiz (matriz/filial)">🔗 Detectar matriz/filial pelo CNPJ</button>` : ''}
         ${key==='clientes' ? `<button class="btn btn-ghost" id="btn-preencher-cnae" onclick="preencherCnaeEmMassa()" title="Consulta o CNPJ de quem ainda não tem CNAE/endereço preenchido e completa sozinho">🔍 Buscar CNAE/dados faltantes (CNPJ)</button>` : ''}
         ${key==='rnc' ? `<button class="btn btn-ghost" onclick="openRncMassaModal()" title="Quando o mesmo erro aconteceu com várias empresas, lança de uma vez em vez de empresa por empresa">📋 Lançar RNC em massa</button>` : ''}
+        ${key==='rentabilidade' ? `<button class="btn btn-ghost" onclick="gerarCompetenciaRentabilidadeEmMassa()" title="Cria o lançamento do mês para todo cliente ativo que ainda não tem — faturamento, nº de funcionários e horas orçadas (honorário ÷ R$ 180/h) já vêm preenchidos, só falta completar horas gastas depois">⚙️ Gerar competência do mês (ativos)</button>` : ''}
+        ${key==='certificados' ? `<button class="btn btn-ghost" onclick="gerarProjetosEmMassa()" title="Cria os 3 projetos (Certificado Digital pra quem ainda não tem controlado aqui, Open Finance e NF de Saída pra clientes que entraram em 2026) sem duplicar quem já tem">⚙️ Gerar projetos em massa</button>` : ''}
         <button class="btn btn-ghost" onclick="exportarExcelSecao('${key}')">📊 Exportar Excel</button>
         <button class="btn btn-ghost" onclick="exportarPdfSecao('${key}')">🧾 Exportar PDF</button>
       </div>
       <div id="bulk-bar-${key}" style="margin-bottom:10px"></div>
-      <div class="table-wrap">
+      <div class="table-scroll-top" id="scrolltop-${key}" onscroll="sincronizarScrollTabela('${key}','top')"><div class="table-scroll-top-inner" id="scrolltop-inner-${key}"></div></div>
+      <div class="table-wrap" id="tablewrap-${key}" onscroll="sincronizarScrollTabela('${key}','bottom')">
         <table>
           <thead><tr><th style="width:32px"><input type="checkbox" onclick="toggleSelecionarTodos('${key}', this.checked)" title="Selecionar todos os visíveis"></th>${sec.columns.map(c=>`<th style="cursor:pointer;user-select:none" onclick="alternarOrdenacaoTabela('${key}','${c}')" title="Clique para ordenar">${labelFor(sec,c)}${setaOrdenacaoTabela(key,c)}</th>`).join('')}<th>Ações</th></tr></thead>
           <tbody id="tbody-${key}"></tbody>
@@ -2782,7 +2877,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     // Oportunidades — desta empresa (+ total do grupo, se houver)
     const oportunidadesEmpresa = DATA.oportunidades.filter(o=>o.clienteId===clienteId);
     const oportunidadesGrupo = ehGrupo ? DATA.oportunidades.filter(o=>idsGrupo.includes(o.clienteId)) : oportunidadesEmpresa;
-    const oportAbertas = oportunidadesEmpresa.filter(o=>o.status==='Identificada'||o.status==='Em andamento');
+    const oportAbertas = oportunidadesEmpresa.filter(o=>o.status==='Identificada'||o.status==='Pendente'||o.status==='Em andamento');
     const oportConvertidasCrossSell = oportunidadesEmpresa.filter(o=>o.status==='Convertida' && o.origem!=='Renegociação de honorário');
     const oportConvertidasTotal = oportunidadesEmpresa.filter(o=>o.status==='Convertida').length;
     const valorCrossSellConvertido = oportConvertidasCrossSell.reduce((s,o)=>s+parseMoneyLike(o.valorEstimado),0);
@@ -2863,10 +2958,39 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       openModal('clientes', clienteId);
     };
     document.getElementById('cliente-view-pdf-btn').onclick = function(){ exportarResumoClientePdf(clienteId); };
+    document.getElementById('cliente-view-projeto-btn').onclick = function(){
+      const tipo = document.getElementById('cliente-view-projeto-tipo').value;
+      enviarClienteParaProjeto(clienteId, tipo);
+    };
+    document.getElementById('cliente-view-oport-btn').onclick = function(){ enviarClienteParaOportunidade(clienteId); };
     document.getElementById('modal-cliente-view').classList.add('open');
   }
   function closeClienteView(){
     document.getElementById('modal-cliente-view').classList.remove('open');
+  }
+
+  // Atalhos do card do cliente (👁️ Ver dados) pra já abrir a aba certa, direto naquele cliente —
+  // se já existir um projeto desse tipo (ou negociação em aberto) pra ele, abre pra editar; senão, abre um
+  // registro novo com o cliente já pré-selecionado.
+  function enviarClienteParaProjeto(clienteId, tipoProjeto){
+    const c = getCliente(clienteId);
+    if(!c) return;
+    const existente = DATA.certificados.find(p=>p.clienteId===clienteId && p.tipoProjeto===tipoProjeto);
+    closeClienteView();
+    switchView('certificados');
+    if(existente){
+      showToast(`${c.razaoSocial} já tem um projeto de "${tipoProjeto}" — abrindo pra editar.`);
+      openModal('certificados', existente.id);
+      return;
+    }
+    openModal('certificados', null, { clienteId, tipoProjeto, status:'Não iniciado' });
+  }
+  function enviarClienteParaOportunidade(clienteId){
+    const c = getCliente(clienteId);
+    if(!c) return;
+    closeClienteView();
+    switchView('oportunidades');
+    openModal('oportunidades', null, { clienteId, data: new Date().toISOString().slice(0,10), status:'Identificada' });
   }
 
   // Relatório executivo mensal: consolida os destaques de Dashboard, Comercial, Rentabilidade e RNC
@@ -2934,6 +3058,15 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       const previsaoPipeline = emAberto.reduce((s,d)=>s+honorarioEfetivoComercial(d),0);
       const aceitas = DATA.comercial.filter(d=>d.statusProposta==='Aceita');
       const totalFechado = aceitas.reduce((s,d)=>s+honorarioEfetivoComercial(d),0);
+      const hojeExec = new Date();
+      const compAtualExec = String(hojeExec.getMonth()+1).padStart(2,'0')+'/'+hojeExec.getFullYear();
+      const honorarioNovosContratosExec = aceitas.filter(d=>normalizarCompetencia(d.competenciaEntrada)===compAtualExec).reduce((s,d)=>s+honorarioEfetivoComercial(d),0);
+      const valorCrossSellExec = DATA.oportunidades.filter(o=>o.status==='Convertida' && o.origem!=='Renegociação de honorário').reduce((s,o)=>s+parseMoneyLike(o.valorEstimado),0);
+      secao('Receita nova (mês atual)');
+      campo('Novos contratos', formatMoneyPlain(honorarioNovosContratosExec));
+      campo('Cross-sell', formatMoneyPlain(valorCrossSellExec));
+      campo('Total', formatMoneyPlain(honorarioNovosContratosExec+valorCrossSellExec));
+
       secao('Comercial');
       campo('Propostas em aberto', emAberto.length);
       campo('Previsão em pipeline', formatMoneyPlain(previsaoPipeline));
@@ -2954,6 +3087,11 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       campo('Total registrado', DATA.rnc.length);
       campo('Índice RNC/cliente ativo', (rncPorCliente*100).toFixed(2)+'%');
       campo('Multas pagas pela Assescont', formatMoneyPlain(multasAssescont));
+
+      secao('Projetos (Certificado Digital, Open Finance, NF de Saída)');
+      campo('Não iniciados', DATA.certificados.filter(p=>p.status==='Não iniciado').length);
+      campo('Em andamento', DATA.certificados.filter(p=>p.status==='Em andamento').length);
+      campo('Concluídos', DATA.certificados.filter(p=>p.status==='Concluído').length);
 
       const totalPaginas = doc.internal.getNumberOfPages();
       for(let i=1;i<=totalPaginas;i++){
@@ -3087,7 +3225,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
 
       const oportunidadesEmpresa = DATA.oportunidades.filter(o=>o.clienteId===clienteId);
       const oportunidadesGrupo = ehGrupo ? DATA.oportunidades.filter(o=>idsGrupo.includes(o.clienteId)) : oportunidadesEmpresa;
-      const oportAbertas = oportunidadesEmpresa.filter(o=>o.status==='Identificada'||o.status==='Em andamento');
+      const oportAbertas = oportunidadesEmpresa.filter(o=>o.status==='Identificada'||o.status==='Pendente'||o.status==='Em andamento');
       const valorCrossSellConvertidoPdf = oportunidadesEmpresa.filter(o=>o.status==='Convertida' && o.origem!=='Renegociação de honorário').reduce((s,o)=>s+parseMoneyLike(o.valorEstimado),0);
       secao('Oportunidades');
       campo('Total identificadas', comGrupo(oportunidadesEmpresa.length, oportunidadesGrupo.length));
@@ -3245,6 +3383,65 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
   // Lançamento do mesmo RNC (mesmo erro) pra várias empresas de uma vez — evita ter que abrir
   // "+ Novo" empresa por empresa quando um erro afeta várias de uma vez (ex: falha de sistema).
   let rncMassaSelecionados = new Set();
+  // Cria o lançamento de Rentabilidade da competência atual para todo cliente ativo que ainda não tem
+  // um lançamento naquele mês — assim o Faturamento/Nº de funcionários contratado (que já vêm do
+  // Comercial ou do cadastro do cliente) aparecem automaticamente, sem precisar criar registro por registro.
+  // Fica pendente só Horas orçadas/gastas e os campos "import. Domínio", que ainda são manuais.
+  function gerarCompetenciaRentabilidadeEmMassa(){
+    const hoje = new Date();
+    const compAtual = String(hoje.getMonth()+1).padStart(2,'0')+'/'+hoje.getFullYear();
+    const ativos = DATA.clientes.filter(c=>c.statusCliente==='Ativo');
+    const existentes = new Set(DATA.rentabilidade.map(r=>r.clienteId+'|'+normalizarCompetencia(r.competencia)));
+    const faltantes = ativos.filter(c=>!existentes.has(c.id+'|'+compAtual));
+    if(faltantes.length===0){ alert(`Todos os ${ativos.length} cliente(s) ativo(s) já têm um lançamento de Rentabilidade para ${compAtual}.`); return; }
+    if(!confirm(`Vou criar o lançamento de ${compAtual} para ${faltantes.length} cliente(s) ativo(s) que ainda não têm. Faturamento, nº de funcionários e Horas orçadas (honorário ÷ R$ 180/h) já vêm preenchidos sozinhos — falta só você completar Horas gastas e os dados de importação do Domínio depois. Continuar?`)) return;
+    faltantes.forEach(c=>{
+      const honorario = parseMoneyLike(c.honorario);
+      DATA.rentabilidade.push({
+        id: 'r'+Date.now()+Math.random().toString(16).slice(2),
+        clienteId: c.id,
+        competencia: compAtual,
+        faturamentoAtual: '',
+        funcionariosAtual: '',
+        horasOrcadas: honorario>0 ? Math.round(honorario/VALOR_HORA*10)/10 : '',
+        horasGastas: '',
+        observacoes: ''
+      });
+    });
+    persist();
+    renderMain();
+    alert(`${faltantes.length} lançamento(s) de Rentabilidade criado(s) para ${compAtual}.`);
+  }
+
+  // Cria os 3 projetos definidos pelo usuário, sem duplicar quem já tem o mesmo tipo de projeto lançado:
+  // (1) Certificado Digital — todo cliente ativo que ainda não tem esse projeto controlado aqui (não há
+  //     campo no cadastro que diga "já tem certificado", então o critério é: ainda não apareceu nesta
+  //     lista — quem já tiver na prática, é só marcar "Concluído" ou apagar o projeto depois);
+  // (2) Open Finance — clientes ativos que entraram em 2026 (competência de entrada);
+  // (3) NF de Saída — clientes ativos, divisão "Comércio", que entraram em 2026 (a busca automática das
+  //     notas no sistema do cliente ainda não existe — fica como projeto manual até essa integração).
+  function gerarProjetosEmMassa(){
+    const ativos = DATA.clientes.filter(c=>c.statusCliente==='Ativo');
+    const existentes = new Set(DATA.certificados.map(r=>r.clienteId+'|'+r.tipoProjeto));
+    const entraram2026 = ativos.filter(c=>{
+      const comp = normalizarCompetencia(c.competenciaEntrada);
+      return comp && comp.endsWith('/2026');
+    });
+    const alvoCertificado = ativos.filter(c=>!existentes.has(c.id+'|Certificado Digital'));
+    const alvoOpenFinance = entraram2026.filter(c=>!existentes.has(c.id+'|Open Finance'));
+    const alvoNfSaida = entraram2026.filter(c=>divisaoDoCliente(c)==='Comércio' && !existentes.has(c.id+'|NF de Saída'));
+    const totalNovos = alvoCertificado.length + alvoOpenFinance.length + alvoNfSaida.length;
+    if(totalNovos===0){ alert('Não encontrei nenhum projeto novo pra criar — todo mundo elegível já tem os 3 tipos lançados.'); return; }
+    if(!confirm(`Vou criar:\n- ${alvoCertificado.length} projeto(s) de Certificado Digital (todo cliente ativo sem esse projeto ainda)\n- ${alvoOpenFinance.length} projeto(s) de Open Finance (clientes que entraram em 2026)\n- ${alvoNfSaida.length} projeto(s) de NF de Saída (clientes de Comércio que entraram em 2026)\n\nTotal: ${totalNovos} projeto(s) novo(s), todos como "Não iniciado". Continuar?`)) return;
+    const novo = (clienteId, tipoProjeto)=>({ id:'r'+Date.now()+Math.random().toString(16).slice(2), clienteId, tipoProjeto, status:'Não iniciado', prazo:'', observacoes:'' });
+    alvoCertificado.forEach(c=>DATA.certificados.push(novo(c.id,'Certificado Digital')));
+    alvoOpenFinance.forEach(c=>DATA.certificados.push(novo(c.id,'Open Finance')));
+    alvoNfSaida.forEach(c=>DATA.certificados.push(novo(c.id,'NF de Saída')));
+    persist();
+    renderMain();
+    alert(`${totalNovos} projeto(s) criado(s): ${alvoCertificado.length} Certificado Digital, ${alvoOpenFinance.length} Open Finance, ${alvoNfSaida.length} NF de Saída.`);
+  }
+
   function openRncMassaModal(){
     rncMassaSelecionados = new Set();
     document.getElementById('rncm-setor').value = '';
@@ -3345,6 +3542,41 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     abrirHistoricoHonorario(clienteId);
   }
 
+  // Núcleo reutilizável: cria a oportunidade (sem confirm/alert) e devolve o que aconteceu, pra poder ser
+  // chamado tanto pelo botão individual (com confirm) quanto pelo envio em massa (um confirm só, pra todos).
+  // retorno: {ok:true,...} ou {ok:false, motivo:'sem-cliente'|'ja-existe'|'sem-horas'|'sem-ajuste', ...}
+  function criarOportunidadeRenegociacao(rentabilidadeId){
+    const rent = DATA.rentabilidade.find(r=>r.id===rentabilidadeId);
+    if(!rent) return { ok:false, motivo:'sem-lancamento' };
+    const c = getCliente(rent.clienteId);
+    if(!c) return { ok:false, motivo:'sem-cliente' };
+    const jaExiste = DATA.oportunidades.find(o=>o.origemRentabilidadeId===rentabilidadeId && (o.status==='Identificada'||o.status==='Pendente'||o.status==='Em andamento'));
+    if(jaExiste) return { ok:false, motivo:'ja-existe', oportunidade: jaExiste };
+    const orcadas = parseNum(rent.horasOrcadas), gastas = parseNum(rent.horasGastas);
+    if(orcadas<=0 && gastas<=0) return { ok:false, motivo:'sem-horas' };
+    const honorarioAtual = parseMoneyLike(c.honorario);
+    const ajuste = (gastas - orcadas) * VALOR_HORA;
+    if(ajuste===0) return { ok:false, motivo:'sem-ajuste' };
+    const honorarioSugerido = honorarioAtual + ajuste;
+    const sentido = ajuste>0 ? 'aumento' : 'redução';
+    const oportunidade = {
+      id: 'r'+Date.now()+Math.random().toString(16).slice(2),
+      clienteId: rent.clienteId,
+      oportunidade: `Renegociação de honorário — competência ${rent.competencia||'?'} (${sentido} sugerido: ${formatMoneyPlain(Math.abs(ajuste))})`,
+      origem: 'Renegociação de honorário',
+      data: new Date().toISOString().slice(0,10),
+      valorEstimado: ajuste,
+      responsavel: '',
+      status: 'Pendente',
+      // Campos internos (não aparecem no formulário) — usados pra aplicar o resultado automaticamente
+      // quando o status virar Convertida ou Perdida.
+      origemRentabilidadeId: rent.id,
+      honorarioBaseNegociacao: honorarioAtual
+    };
+    DATA.oportunidades.push(oportunidade);
+    return { ok:true, cliente:c, honorarioAtual, honorarioSugerido, ajuste, sentido };
+  }
+
   // Ponte Rentabilidade -> Oportunidades: transforma o ajuste sugerido numa negociação de verdade,
   // com funil (Identificada -> Em andamento -> Convertida/Perdida). Se o cliente aceitar (Convertida),
   // o honorário é atualizado automaticamente e o resultado fica registrado no histórico do cliente
@@ -3354,7 +3586,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     if(!rent) return;
     const c = getCliente(rent.clienteId);
     if(!c) return;
-    const jaExiste = DATA.oportunidades.find(o=>o.origemRentabilidadeId===rentabilidadeId && (o.status==='Identificada'||o.status==='Em andamento'));
+    const jaExiste = DATA.oportunidades.find(o=>o.origemRentabilidadeId===rentabilidadeId && (o.status==='Identificada'||o.status==='Pendente'||o.status==='Em andamento'));
     if(jaExiste){
       alert('Já existe uma negociação em aberto para esta competência ("'+jaExiste.oportunidade+'"). Acompanhe ela na aba Oportunidades em vez de criar outra.');
       switchView('oportunidades');
@@ -3368,21 +3600,8 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     const honorarioSugerido = honorarioAtual + ajuste;
     const sentido = ajuste>0 ? 'aumento' : 'redução';
     if(!confirm(`Criar uma oportunidade para negociar ${sentido} de honorário com ${c.razaoSocial}?\n\nHonorário atual: ${formatMoneyPlain(honorarioAtual)}\nHonorário sugerido: ${formatMoneyPlain(honorarioSugerido)} (${ajuste>0?'+':''}${formatMoneyPlain(ajuste)})\n\nVocê vai poder acompanhar essa negociação na aba Oportunidades. Se o cliente aceitar (marcar como "Convertida"), o honorário é atualizado automaticamente e fica registrado no histórico do cliente.`)) return;
-    const oportunidade = {
-      id: 'r'+Date.now()+Math.random().toString(16).slice(2),
-      clienteId: rent.clienteId,
-      oportunidade: `Renegociação de honorário — competência ${rent.competencia||'?'} (${sentido} sugerido: ${formatMoneyPlain(Math.abs(ajuste))})`,
-      origem: 'Renegociação de honorário',
-      data: new Date().toISOString().slice(0,10),
-      valorEstimado: ajuste,
-      responsavel: '',
-      status: 'Identificada',
-      // Campos internos (não aparecem no formulário) — usados pra aplicar o resultado automaticamente
-      // quando o status virar Convertida ou Perdida.
-      origemRentabilidadeId: rent.id,
-      honorarioBaseNegociacao: honorarioAtual
-    };
-    DATA.oportunidades.push(oportunidade);
+    const resultado = criarOportunidadeRenegociacao(rentabilidadeId);
+    if(!resultado.ok) return;
     persist();
     showToast('Oportunidade de negociação criada! Acompanhe em Oportunidades.');
     switchView('oportunidades');
@@ -3662,7 +3881,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
   function renderOportunidadesResumo(){
     const rows = filteredRows('oportunidades');
     const totalParaPct = rows.length || 1;
-    const statusOrder = ['Identificada','Em andamento','Convertida','Perdida'];
+    const statusOrder = ['Identificada','Pendente','Em andamento','Convertida','Perdida'];
     const funil = statusOrder.map(s=>{ const n = rows.filter(o=>o.status===s).length; return { label:s, n, pct: Math.round(n/totalParaPct*100) }; });
 
     // Negociações de honorário (nascidas da Rentabilidade) entram no funil normalmente — é útil ver o
@@ -3670,7 +3889,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     // indicador "Ganho com reajustes" do dashboard; contar nos dois ao mesmo tempo duplicaria o valor.
     const crossSell = o => o.origem !== 'Renegociação de honorário';
     const valorConvertido = rows.filter(o=>o.status==='Convertida' && crossSell(o)).reduce((s,o)=>s+parseMoneyLike(o.valorEstimado),0);
-    const valorAberto = rows.filter(o=>(o.status==='Identificada'||o.status==='Em andamento') && crossSell(o)).reduce((s,o)=>s+parseMoneyLike(o.valorEstimado),0);
+    const valorAberto = rows.filter(o=>(o.status==='Identificada'||o.status==='Pendente'||o.status==='Em andamento') && crossSell(o)).reduce((s,o)=>s+parseMoneyLike(o.valorEstimado),0);
     const valorTotal = rows.filter(crossSell).reduce((s,o)=>s+parseMoneyLike(o.valorEstimado),0);
 
     // Competência = mês/ano da data da oportunidade (não existe um campo de competência manual aqui,
@@ -3706,19 +3925,206 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     `;
   }
 
-  function renderRentabilidadeResumo(){
-    const rows = filteredRows('rentabilidade');
+  let sortHistoricoRentabilidade = { campo:null, dir:'asc' };
+  function alternarOrdenacaoHistoricoRentabilidade(campo){
+    if(sortHistoricoRentabilidade.campo===campo) sortHistoricoRentabilidade.dir = sortHistoricoRentabilidade.dir==='asc'?'desc':'asc';
+    else { sortHistoricoRentabilidade.campo = campo; sortHistoricoRentabilidade.dir = 'asc'; }
+    switchView('rentabilidade');
+  }
+  function setaHistoricoRentabilidade(campo){
+    if(sortHistoricoRentabilidade.campo!==campo) return ' <span style="opacity:.35;font-size:.85em">⇅</span>';
+    return sortHistoricoRentabilidade.dir==='desc' ? ' ▼' : ' ▲';
+  }
+  function valorOrdenavelHistorico(l, campo){
+    switch(campo){
+      case 'empresa': return (l.c.razaoSocial||'').toLowerCase();
+      case 'honorario': return l.honorario;
+      case 'custoProjetado': return l.custoProjetado;
+      case 'gastas': return l.gastas;
+      case 'desvio': return l.desvioPct===null ? -Infinity : l.desvioPct;
+      case 'aumento': return l.aumentoDevido;
+      case 'sugestao': return l.honorarioSugerido;
+      default: return 0;
+    }
+  }
 
-    // Capacidade operacional: quantidade de colaboradores (preenchida manualmente, fica salva) x 220h/mês
-    // por colaborador = capacidade total em HH (Hora Homem). Comparada com as horas gastas (do Domínio,
-    // lançadas na própria Rentabilidade) pra saber quanta hora ainda está disponível.
+  // Seleção múltipla + envio em massa das negociações direto do Breve histórico.
+  let selecionadosHistoricoRentabilidade = new Set();
+  function toggleSelecionadoHistoricoRentabilidade(id, checked){
+    if(checked) selecionadosHistoricoRentabilidade.add(id); else selecionadosHistoricoRentabilidade.delete(id);
+    atualizarBotaoEnviarSelecionadosRent();
+  }
+  function toggleSelecionarTodosHistoricoRentabilidade(checked){
+    document.querySelectorAll('.chk-historico-rent').forEach(chk=>{
+      chk.checked = checked;
+      if(checked) selecionadosHistoricoRentabilidade.add(chk.value); else selecionadosHistoricoRentabilidade.delete(chk.value);
+    });
+    atualizarBotaoEnviarSelecionadosRent();
+  }
+  function atualizarBotaoEnviarSelecionadosRent(){
+    const btn = document.getElementById('btn-enviar-selecionados-rent');
+    if(btn) btn.textContent = `✉️ Enviar selecionados (${selecionadosHistoricoRentabilidade.size})`;
+  }
+  function enviarSelecionadosHistoricoRentabilidade(){
+    if(selecionadosHistoricoRentabilidade.size===0){ alert('Selecione pelo menos uma empresa (marque as caixinhas da tabela).'); return; }
+    const ids = [...selecionadosHistoricoRentabilidade];
+    if(!confirm(`Vou criar oportunidade de renegociação (status Pendente) para ${ids.length} empresa(s) selecionada(s). Continuar?`)) return;
+    let criadas=0, jaExistiam=0, outros=0;
+    ids.forEach(id=>{
+      const resultado = criarOportunidadeRenegociacao(id);
+      if(resultado.ok) criadas++;
+      else if(resultado.motivo==='ja-existe') jaExistiam++;
+      else outros++;
+    });
+    persist();
+    selecionadosHistoricoRentabilidade.clear();
+    let msg = `${criadas} oportunidade(s) criada(s).`;
+    if(jaExistiam) msg += ` ${jaExistiam} já tinham negociação em aberto.`;
+    if(outros) msg += ` ${outros} sem horas/ajuste suficiente.`;
+    alert(msg);
+    switchView('oportunidades');
+  }
+
+  // Breve histórico por empresa (não é "o resultado" detalhado da tabela principal, é um resumo direto
+  // ao ponto): Honorário, Custo projetado (horas orçadas x R$180), Horas gastas, Desvio %, Aumento devido
+  // e Sugestão de novo honorário — com um botão "Enviar" que cria a oportunidade de renegociação
+  // (status Pendente) direto, sem precisar abrir o registro. Respeita os filtros de competência/período/
+  // "Fora da meta" e a regra de cliente com no mínimo 3 meses de casa.
+  // Mesmos filtros aplicados na tabela detalhada de Projetos (oculta Concluído por padrão, tipo/status/
+  // prazo, filtro rápido dos mini-cards) — usado também no quadro agrupado por empresa, pra não ter os
+  // dois lugares respeitando filtros diferentes.
+  function linhasProjetosFiltradas(){
+    let rows = filteredRows('certificados');
+    if(!mostrarProjetosConcluidos && quickFilter.key!=='certificados') rows = rows.filter(r=>r.status!=='Concluído');
+    if(filtrosProjetos.tipoProjeto) rows = rows.filter(r=>r.tipoProjeto===filtrosProjetos.tipoProjeto);
+    if(filtrosProjetos.status) rows = rows.filter(r=>r.status===filtrosProjetos.status);
+    if(filtrosProjetos.prazo) rows = rows.filter(r=>{
+      const d = daysDiff(r.prazo);
+      if(filtrosProjetos.prazo==='sem') return !r.prazo;
+      if(filtrosProjetos.prazo==='vencido') return d!==null && d<0;
+      if(filtrosProjetos.prazo==='30dias') return d!==null && d>=0 && d<=30;
+      return true;
+    });
+    if(quickFilter.key==='certificados' && quickFilter.predicate) rows = rows.filter(quickFilter.predicate);
+    return rows;
+  }
+
+  function renderRentabilidadeHistorico(){
+    const rows = linhasRentabilidadeFiltradas();
+    if(rows.length===0){
+      return `
+        <div class="bars-card" style="margin-bottom:16px">
+          <h3>📋 Breve histórico — honorário x custo, por empresa</h3>
+          <p style="color:var(--gray1);font-size:.8rem;margin-bottom:12px">Nenhum lançamento de Rentabilidade ainda ${filtrosRentabilidade.competencia ? `para a competência ${filtrosRentabilidade.competencia}` : '(a base está vazia, ou os únicos lançamentos são de clientes com menos de 3 meses de casa e por isso ficam de fora)'} — por isso esse quadro não tem o que mostrar.</p>
+          <button class="btn btn-primary" onclick="gerarCompetenciaRentabilidadeEmMassa()">⚙️ Gerar competência do mês (ativos)</button>
+        </div>
+      `;
+    }
+    let linhas = rows.map(r=>{
+      const c = getCliente(r.clienteId);
+      if(!c) return null;
+      const honorario = parseMoneyLike(c.honorario);
+      const orcadas = parseNum(r.horasOrcadas), gastas = parseNum(r.horasGastas);
+      const custoProjetado = orcadas>0 ? orcadas*VALOR_HORA : 0;
+      const desvioPct = orcadas>0 ? Math.round((gastas-orcadas)/orcadas*1000)/10 : null;
+      const temHoras = orcadas>0 || gastas>0;
+      const aumentoDevido = temHoras ? (gastas-orcadas)*VALOR_HORA : 0;
+      const honorarioSugerido = honorario + aumentoDevido;
+      const jaEnviado = DATA.oportunidades.some(o=>o.origemRentabilidadeId===r.id && (o.status==='Pendente'||o.status==='Identificada'||o.status==='Em andamento'));
+      return { r, c, honorario, custoProjetado, orcadas, gastas, desvioPct, aumentoDevido, honorarioSugerido, jaEnviado, temHoras };
+    }).filter(Boolean);
+    if(linhas.length===0){
+      return `
+        <div class="bars-card" style="margin-bottom:16px">
+          <h3>📋 Breve histórico — honorário x custo, por empresa</h3>
+          <p style="color:var(--gray1);font-size:.8rem">Os ${rows.length} lançamento(s) encontrados apontam para clientes que não existem mais na base — nada pra mostrar aqui.</p>
+        </div>
+      `;
+    }
+    if(sortHistoricoRentabilidade.campo){
+      linhas = linhas.slice().sort((a,b)=>{
+        const va = valorOrdenavelHistorico(a, sortHistoricoRentabilidade.campo);
+        const vb = valorOrdenavelHistorico(b, sortHistoricoRentabilidade.campo);
+        const cmp = (typeof va==='string' || typeof vb==='string') ? String(va).localeCompare(String(vb),'pt-BR') : (va-vb);
+        return sortHistoricoRentabilidade.dir==='asc' ? cmp : -cmp;
+      });
+    }
+
+    // Impacto financeiro dos desvios — dois recortes pedidos pelo usuário, ambos usando o valor da hora
+    // padrão do sistema (R$ 180,00 — confirmado pelo usuário depois de eu alertar que R$ 80,00 era o valor
+    // antigo/errado de uma correção anterior):
+    // (1) Receita perdida: horas excedentes (gastas > orçadas) de todas as empresas x R$ 180,00/h.
+    // (2) Total de descontos devidos: soma dos casos em que o cliente gastou menos horas que orçado.
+    const receitaPerdidaDesvios = linhas.filter(l=>l.temHoras && (l.gastas-l.orcadas)>0).reduce((s,l)=>s+(l.gastas-l.orcadas)*VALOR_HORA, 0);
+    const totalDescontosDevidos = linhas.filter(l=>l.aumentoDevido<0).reduce((s,l)=>s+Math.abs(l.aumentoDevido), 0);
+    const qtdAumento = linhas.filter(l=>l.aumentoDevido>0).length;
+    const qtdDesconto = linhas.filter(l=>l.aumentoDevido<0).length;
+
+    return `
+      <div class="bars-card" style="margin-bottom:16px">
+        <h3>💸 Impacto financeiro dos desvios</h3>
+        <p style="color:var(--gray1);font-size:.68rem;margin-bottom:10px">Os dois cards usam R$ 180,00/hora — o mesmo valor da hora usado no "Aumento devido" da tabela abaixo.</p>
+        <div class="mini-cards">
+          ${miniCardHtml('Receita perdida por desvios', formatMoneyPlain(receitaPerdidaDesvios), `${qtdAumento} empresa(s) acima do orçado — R$ 180,00/h`, receitaPerdidaDesvios>0?'red':'green')}
+          ${miniCardHtml('Total de descontos devidos', formatMoneyPlain(totalDescontosDevidos), `${qtdDesconto} empresa(s) abaixo do orçado`, totalDescontosDevidos>0?'orange':'green')}
+        </div>
+      </div>
+
+      <div class="bars-card" style="margin-bottom:16px;padding:0;overflow:hidden">
+        <h3 style="padding:18px 20px 0 20px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+          <span>📋 Breve histórico — honorário x custo, por empresa</span>
+          <span style="display:flex;gap:8px">
+            <button class="btn btn-ghost" id="btn-enviar-selecionados-rent" style="font-size:.72rem;padding:5px 10px" onclick="enviarSelecionadosHistoricoRentabilidade()">✉️ Enviar selecionados (0)</button>
+            <button class="btn btn-ghost" style="font-size:.72rem;padding:5px 10px;margin-right:20px" onclick="exportarPdfSecao('rentabilidade','tbody-rentabilidade-historico','📋 Breve histórico — honorário x custo, por empresa', true)">🧾 Exportar PDF</button>
+          </span>
+        </h3>
+        <p style="color:var(--gray1);font-size:.68rem;padding:0 20px;margin:6px 0 12px">Uma linha por lançamento (respeitando os filtros ativos). Clique nos cabeçalhos pra ordenar. Marque as caixinhas pra selecionar várias empresas e enviar de uma vez, ou use o botão "Enviar" de uma linha só.</p>
+        <div class="table-scroll-top" id="scrolltop-rentabilidade-historico" onscroll="sincronizarScrollTabela(null,'top','tablewrap-rentabilidade-historico','scrolltop-rentabilidade-historico')"><div class="table-scroll-top-inner" id="scrolltop-inner-rentabilidade-historico"></div></div>
+        <div class="table-wrap" id="tablewrap-rentabilidade-historico" style="margin:0;border:none;border-radius:0" onscroll="sincronizarScrollTabela(null,'bottom','tablewrap-rentabilidade-historico','scrolltop-rentabilidade-historico')">
+          <table>
+            <thead><tr>
+              <th style="width:32px"><input type="checkbox" onchange="toggleSelecionarTodosHistoricoRentabilidade(this.checked)" title="Selecionar todas as elegíveis"></th>
+              <th style="cursor:pointer;user-select:none" onclick="alternarOrdenacaoHistoricoRentabilidade('empresa')">Empresa${setaHistoricoRentabilidade('empresa')}</th>
+              <th style="cursor:pointer;user-select:none" onclick="alternarOrdenacaoHistoricoRentabilidade('honorario')">Honorário${setaHistoricoRentabilidade('honorario')}</th>
+              <th style="cursor:pointer;user-select:none" onclick="alternarOrdenacaoHistoricoRentabilidade('custoProjetado')">Custo projetado${setaHistoricoRentabilidade('custoProjetado')}</th>
+              <th style="cursor:pointer;user-select:none" onclick="alternarOrdenacaoHistoricoRentabilidade('gastas')">Horas gastas (Domínio)${setaHistoricoRentabilidade('gastas')}</th>
+              <th style="cursor:pointer;user-select:none" onclick="alternarOrdenacaoHistoricoRentabilidade('desvio')">Desvio (%)${setaHistoricoRentabilidade('desvio')}</th>
+              <th style="cursor:pointer;user-select:none" onclick="alternarOrdenacaoHistoricoRentabilidade('aumento')">Aumento devido${setaHistoricoRentabilidade('aumento')}</th>
+              <th style="cursor:pointer;user-select:none" onclick="alternarOrdenacaoHistoricoRentabilidade('sugestao')">Sugestão novo honorário${setaHistoricoRentabilidade('sugestao')}</th>
+              <th>Enviar</th>
+            </tr></thead>
+            <tbody id="tbody-rentabilidade-historico">
+              ${linhas.map(l=>`
+                <tr>
+                  <td>${(!l.jaEnviado && l.temHoras && l.aumentoDevido!==0) ? `<input type="checkbox" class="chk-historico-rent" value="${l.r.id}" ${selecionadosHistoricoRentabilidade.has(l.r.id)?'checked':''} onchange="toggleSelecionadoHistoricoRentabilidade('${l.r.id}', this.checked)">` : ''}</td>
+                  <td class="bold">${l.c.razaoSocial}${l.r.competencia?` <span style="color:var(--gray1);font-size:.72rem;font-weight:400">(${l.r.competencia})</span>`:''}</td>
+                  <td>${formatMoney(l.honorario)}</td>
+                  <td>${l.custoProjetado>0?formatMoney(l.custoProjetado):'—'}</td>
+                  <td>${l.gastas>0?l.gastas.toLocaleString('pt-BR'):'—'}</td>
+                  <td>${l.desvioPct!==null ? `<span style="color:${l.desvioPct>0?'#ff8a75':(l.desvioPct<0?'#5de8a0':'inherit')}">${l.desvioPct>0?'+':''}${l.desvioPct.toLocaleString('pt-BR')}%</span>` : '—'}</td>
+                  <td>${l.temHoras && l.aumentoDevido!==0 ? `<span style="color:${l.aumentoDevido>0?'#5de8a0':'#ff8a75'}">${l.aumentoDevido>0?'+ ':'- '}${formatMoney(Math.abs(l.aumentoDevido))}</span>` : '—'}</td>
+                  <td>${l.temHoras && l.aumentoDevido!==0 ? formatMoney(l.honorarioSugerido) : '—'}</td>
+                  <td>${l.jaEnviado ? '<span class="chip chip-green">Enviado</span>' : (l.temHoras && l.aumentoDevido!==0 ? `<button class="btn btn-ghost" style="font-size:.72rem;padding:4px 10px" onclick="negociarHonorarioSugerido('${l.r.id}')">Enviar</button>` : '<span style="color:var(--gray1)">—</span>')}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  // Capacidade operacional (HH): quantidade de colaboradores (preenchida manualmente, fica salva) x 220h/mês
+  // por colaborador = capacidade total em HH (Hora Homem). Comparada com as horas gastas (do Domínio,
+  // lançadas na própria Rentabilidade) pra saber quanta hora ainda está disponível. Indicador importante —
+  // fica logo no topo da aba, antes de qualquer outro quadro.
+  function renderCapacidadeOperacional(){
+    const rows = linhasRentabilidadeFiltradas();
     const colaboradores = parseNum(DATA.configColaboradoresOperacionais);
     const capacidadeTotal = colaboradores * 220;
     const horasGastasTotal = rows.reduce((s,r)=>s+parseNum(r.horasGastas),0);
     const horasDisponiveis = capacidadeTotal - horasGastasTotal;
     const periodoAtivoRent = filtroInicio || filtroFim;
-
-    const blocoCapacidade = `
+    return `
       <div class="bars-card" style="margin-bottom:16px">
         <h3>👥 Capacidade operacional${periodoAtivoRent?' — período selecionado':''}</h3>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
@@ -3735,8 +4141,11 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         </div>
       </div>
     `;
+  }
 
-    if(rows.length===0) return blocoCapacidade;
+  function renderRentabilidadeResumo(){
+    const rows = linhasRentabilidadeFiltradas();
+    if(rows.length===0) return '';
     const grupos = {};
     rows.forEach(r=>{
       const c = getCliente(r.clienteId);
@@ -3755,8 +4164,8 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       const desvioFat = fc>0 ? Math.round((fa-fc)/fc*1000)/10 : null;
       return { g, o, gs, desvio, fc, fa, desvioFat };
     });
-    return blocoCapacidade + `
-      <div class="bars-card">
+    return `
+      <div class="bars-card" style="margin-bottom:16px">
         <h3>📈 Resumo por grupo (horas orçadas x gastas)</h3>
         ${linhas.map(l=>`
           <div class="bar-row">
@@ -3801,18 +4210,19 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     return out.replace(/[ \t]+/g,' ').replace(/ ?\n ?/g,'\n').trim();
   }
 
-  function obterDadosTabelaAtual(key){
-    const tbody = document.getElementById('tbody-'+key);
+  function obterDadosTabelaAtual(key, tbodyIdOverride, semColunaAcoes){
+    const tbody = document.getElementById(tbodyIdOverride || ('tbody-'+key));
     if(!tbody) return null;
     const table = tbody.closest('table');
     if(!table) return null;
     const thElements = [...table.querySelectorAll('thead th')];
     const temCheckbox = thElements.length>0 && !!thElements[0].querySelector('input[type=checkbox]');
     const inicio = temCheckbox ? 1 : 0;
-    const headers = thElements.map(th=>th.textContent.trim()).slice(inicio, -1); // remove checkbox (se houver) e "Ações"
+    const fim = semColunaAcoes ? undefined : -1; // tabelas padrão terminam em "Ações" (removida); esta não tem
+    const headers = thElements.map(th=>th.textContent.trim()).slice(inicio, fim);
     const bodyRows = [...tbody.querySelectorAll('tr')].filter(tr=>!tr.classList.contains('empty-row'));
     const linhas = bodyRows.map(tr=>{
-      const cells = [...tr.querySelectorAll('td')].slice(inicio, -1); // remove checkbox (se houver) e célula de Ações
+      const cells = [...tr.querySelectorAll('td')].slice(inicio, fim);
       return cells.map(td=>{
         const clone = td.cloneNode(true);
         clone.querySelectorAll('br').forEach(br=>br.replaceWith(' — '));
@@ -3868,9 +4278,9 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     showToast('Excel exportado!');
   }
 
-  function exportarPdfSecao(key){
+  function exportarPdfSecao(key, tbodyIdOverride, tituloOverride, semColunaAcoes){
     if(typeof jspdf === 'undefined' || typeof jspdf.jsPDF !== 'function'){ alert('Não consegui carregar o exportador de PDF agora. Verifique sua conexão e tente de novo.'); return; }
-    const dadosBrutos = obterDadosTabelaAtual(key);
+    const dadosBrutos = obterDadosTabelaAtual(key, tbodyIdOverride, semColunaAcoes);
     if(!dadosBrutos || dadosBrutos.linhas.length===0){ alert('Não há registros para exportar nesta tela (confira os filtros aplicados).'); return; }
     // Sanitiza tudo que vai pro PDF — qualquer ícone/emoji usado na tela (de qualquer aba, conhecido ou não)
     // vira caractere corrompido na fonte do gerador; aqui filtra pra manter só o que a fonte desenha direito.
@@ -3878,19 +4288,20 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       headers: dadosBrutos.headers.map(sanitizarTextoPdf),
       linhas: dadosBrutos.linhas.map(linha=>linha.map(sanitizarTextoPdf))
     };
+    const tituloExibido = tituloOverride || tituloSecao(key);
     const paisagem = dados.headers.length > 6;
     const doc = new jspdf.jsPDF({ orientation: paisagem ? 'landscape' : 'portrait', unit:'mm', format:'a4' });
     const corMarca = [225,181,128];   // dourado da identidade visual Assescont
     const corGrafite = [35,36,34];    // grafite escuro da identidade visual Assescont
     const larguraPagina = doc.internal.pageSize.getWidth();
-    const resumoCards = key==='clientes' ? obterResumoCardsClientes() : null;
+    const resumoCards = key==='clientes' && !tbodyIdOverride ? obterResumoCardsClientes() : null;
 
     function cabecalho(){
       doc.setFillColor(corGrafite[0],corGrafite[1],corGrafite[2]);
       doc.rect(0, 0, larguraPagina, 23, 'F');
       try{ doc.addImage(LOGO_SRC, 'PNG', 10, 4.5, 14, 14); }catch(e){}
       doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(255,255,255);
-      doc.text('ASSESCONT  ·  ' + sanitizarTextoPdf(tituloSecao(key).replace(/^\S+\s/,'')).toUpperCase(), 28, 11);
+      doc.text('ASSESCONT  ·  ' + sanitizarTextoPdf(tituloExibido.replace(/^\S+\s/,'')).toUpperCase(), 28, 11);
       doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(corMarca[0],corMarca[1],corMarca[2]);
       const agora = new Date();
       doc.text('Exportado em ' + agora.toLocaleDateString('pt-BR') + ' às ' + agora.toLocaleTimeString('pt-BR').slice(0,5) + '  ·  ' + dados.linhas.length + ' registro(s)', 28, 17);
@@ -3925,7 +4336,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       doc.text('Página ' + i + ' de ' + totalPaginas, larguraPagina-28, doc.internal.pageSize.getHeight()-8);
     }
 
-    doc.save(nomeArquivoExportacao(key,'pdf'));
+    doc.save(nomeArquivoExportacao(tbodyIdOverride ? 'rentabilidade_breve_historico' : key,'pdf'));
     showToast('PDF exportado!');
   }
 
@@ -4184,8 +4595,35 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     if(key==='demandas' && !mostrarDemandasConcluidas && quickFilter.key!=='demandas'){
       rows = rows.filter(r=>r.status!=='Finalizado');
     }
+    if(key==='comercial' && !mostrarComercialAceitas && quickFilter.key!=='comercial'){
+      rows = rows.filter(r=>r.statusProposta!=='Aceita');
+    }
+    if(key==='certificados' && !mostrarProjetosConcluidos && quickFilter.key!=='certificados'){
+      rows = rows.filter(r=>r.status!=='Concluído');
+    }
+    if(key==='certificados' && filtrosProjetos.tipoProjeto){
+      rows = rows.filter(r=>r.tipoProjeto===filtrosProjetos.tipoProjeto);
+    }
+    if(key==='certificados' && filtrosProjetos.status){
+      rows = rows.filter(r=>r.status===filtrosProjetos.status);
+    }
+    if(key==='certificados' && filtrosProjetos.prazo){
+      rows = rows.filter(r=>{
+        const d = daysDiff(r.prazo);
+        if(filtrosProjetos.prazo==='sem') return !r.prazo;
+        if(filtrosProjetos.prazo==='vencido') return d!==null && d<0;
+        if(filtrosProjetos.prazo==='30dias') return d!==null && d>=0 && d<=30;
+        return true;
+      });
+    }
     if(key==='agenda' && filtrosAgenda.status){
       rows = rows.filter(r=>r.status===filtrosAgenda.status);
+    }
+    if(key==='rentabilidade' && filtrosRentabilidade.competencia){
+      rows = rows.filter(r=>normalizarCompetencia(r.competencia)===filtrosRentabilidade.competencia);
+    }
+    if(key==='rentabilidade'){
+      rows = rows.filter(r=>clienteElegivelRentabilidade(getCliente(r.clienteId), r.competencia));
     }
     if(quickFilter.key===key && quickFilter.predicate){
       rows = rows.filter(quickFilter.predicate);
@@ -4196,6 +4634,11 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       else if(filtrosClientes.regime) rows = rows.filter(r=>r.regime===filtrosClientes.regime);
       if(filtrosClientes.estado) rows = rows.filter(r=>r.estado===filtrosClientes.estado);
       if(filtrosClientes.grupo) rows = rows.filter(r=>r.grupo===filtrosClientes.grupo);
+      if(filtrosClientes.anoEntrada==='__SEM_ENTRADA__') rows = rows.filter(r=>!r.competenciaEntrada);
+      else {
+        if(filtrosClientes.anoEntrada) rows = rows.filter(r=>String(r.competenciaEntrada||'').trim().endsWith('/'+filtrosClientes.anoEntrada));
+        if(filtrosClientes.mesEntrada) rows = rows.filter(r=>String(r.competenciaEntrada||'').trim().startsWith(filtrosClientes.mesEntrada+'/'));
+      }
     }
     if(filterText){
       rows = rows.filter(r => {
@@ -4227,6 +4670,9 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       return;
     }
     const sel = getSelecionados(key);
+    // A pedido do usuário: em Clientes e Rentabilidade, clicar em qualquer lugar da linha (fora dos botões
+    // de ação e do checkbox) já abre direto pra edição — não precisa mirar no ícone de lápis.
+    const linhaAbreEdicao = (key==='clientes' || key==='rentabilidade');
     tbody.innerHTML = rows.map(r=>{
       let extraBtns = '';
       if(key==='clientes'){
@@ -4244,7 +4690,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
           <button class="icon-btn" title="Negociar honorário sugerido em Oportunidades" onclick="negociarHonorarioSugerido('${r.id}')">💬</button>`;
       }
       return `
-      <tr>
+      <tr ${linhaAbreEdicao ? `onclick="if(!event.target.closest('.action-btns') && event.target.tagName!=='INPUT') openModal('${key}','${r.id}')" style="cursor:pointer"` : ''}>
         <td><input type="checkbox" data-id="${r.id}" ${sel.has(r.id)?'checked':''} onchange="toggleSelecionadoLinha('${key}','${r.id}', this.checked)"></td>
         ${sec.columns.map((c,i)=>`<td class="${i===0 && c!=='clienteId'?'bold':''}">${fmtVal(sec,c,r,key)}</td>`).join('')}
         <td class="action-btns">
@@ -4256,22 +4702,174 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     `;
     }).join('');
     atualizarBarraSelecaoMassa(key);
+    aplicarColunasFixas(key);
+    configurarScrollTopoTabela(key, 'tablewrap-'+key, 'scrolltop-'+key, 'scrolltop-inner-'+key);
+  }
+
+  // Sincroniza a barra de rolagem de cima com a de baixo (nativa do navegador) — pra rolar de lado sem
+  // precisar descer até o fim da tabela pra achar a barra. Só aparece quando a tabela é mais larga que a
+  // tela; sem isso, fica escondida (senão criaria uma faixa vazia à toa em tabelas que já cabem inteiras).
+  function configurarScrollTopoTabela(key, idWrap, idTopo, idTopoInner){
+    const wrap = document.getElementById(idWrap);
+    const topo = document.getElementById(idTopo);
+    const topoInner = document.getElementById(idTopoInner);
+    if(!wrap || !topo || !topoInner) return;
+    const tabela = wrap.querySelector('table');
+    if(!tabela) return;
+    const precisaRolar = tabela.scrollWidth > wrap.clientWidth + 2;
+    topo.style.display = precisaRolar ? 'block' : 'none';
+    if(precisaRolar) topoInner.style.width = tabela.scrollWidth + 'px';
+  }
+  // Chamado pelo onscroll dos dois elementos (topo e tabela) — espelha a posição de um pro outro.
+  function sincronizarScrollTabela(key, origem, idWrap, idTopo){
+    idWrap = idWrap || ('tablewrap-'+key);
+    idTopo = idTopo || ('scrolltop-'+key);
+    const wrap = document.getElementById(idWrap);
+    const topo = document.getElementById(idTopo);
+    if(!wrap || !topo) return;
+    if(origem==='top') wrap.scrollLeft = topo.scrollLeft;
+    else topo.scrollLeft = wrap.scrollLeft;
+  }
+
+  /* Congela as primeiras colunas de uma tabela (checkbox + sec.stickyCols colunas), deixando o resto rolar de lado. */
+  function aplicarColunasFixas(key, tbodyIdOverride, nOverride){
+    const sec = SECTIONS[key];
+    const n = nOverride!==undefined ? nOverride : (sec && sec.stickyCols);
+    if(!n) return;
+    const tbody = document.getElementById(tbodyIdOverride || `tbody-${key}`);
+    if(!tbody) return;
+    const table = tbody.closest('table');
+    if(!table) return;
+    const theadRow = table.querySelector('thead tr');
+    if(!theadRow) return;
+    const totalFixas = n + 1; // +1 pelo checkbox
+    // Mede a largura de cada coluna fixa UMA VEZ, a partir do cabeçalho — todas as células de uma mesma
+    // coluna têm a mesma largura (é assim que o navegador calcula o layout de tabela), então não precisa
+    // reler célula por célula em cada linha do corpo. Reler em cada linha travava a tela em tabelas com
+    // muitas linhas (ex: Clientes, com mais de mil) — cada leitura de largura força o navegador a
+    // recalcular o layout inteiro da página, e isso centenas/milhares de vezes seguidas trava a aba.
+    const offsets = [];
+    let acumulado = 0;
+    for(let i=0; i<totalFixas && i<theadRow.children.length; i++){
+      offsets.push(acumulado);
+      acumulado += theadRow.children[i].offsetWidth;
+    }
+    const linhas = [theadRow, ...table.querySelectorAll('tbody tr')].filter(Boolean);
+    linhas.forEach(row=>{
+      if(row.classList && row.classList.contains('empty-row')) return;
+      const ehCabecalho = row.parentElement && row.parentElement.tagName === 'THEAD';
+      for(let i=0; i<totalFixas && i<row.children.length; i++){
+        const cel = row.children[i];
+        cel.classList.add(ehCabecalho ? 'th-sticky' : 'td-sticky');
+        cel.style.left = (offsets[i]||0) + 'px';
+        if(i === totalFixas-1) cel.classList.add('sticky-edge');
+      }
+    });
   }
 
 /* ======================================================================
    MINI-DASHBOARDS POR ABA
    ====================================================================== */
   let quickFilter = { key:null, predicate:null, label:'' };
-  let filtrosClientes = { status:'', regime:'', estado:'', grupo:'' };
+  let filtrosClientes = { status:'', regime:'', estado:'', grupo:'', anoEntrada:'', mesEntrada:'' };
   let filtrosRelacionamento = { nivel:'', status:'' };
   let filtrosAgenda = { status:'' };
+  // Vários lançamentos de Domínio podem chegar de meses diferentes (não necessariamente o mês corrente) —
+  // esse filtro deixa isolar uma competência específica pra revisar/importar aos poucos.
+  let filtrosRentabilidade = { competencia:'' };
+  // Filtro dedicado da aba Projetos (Tipo de projeto, Status, Prazo) — a pedido do usuário.
+  let filtrosProjetos = { tipoProjeto:'', status:'', prazo:'' };
+  function renderFiltrosProjetos(){
+    const ativo = filtrosProjetos.tipoProjeto || filtrosProjetos.status || filtrosProjetos.prazo;
+    return `
+      <div class="toolbar" style="margin-bottom:14px">
+        <span style="font-size:.78rem;color:var(--gray2)">🔍 Filtrar por:</span>
+        <select class="filter-select" onchange="filtrosProjetos.tipoProjeto=this.value; renderTable('certificados');">
+          <option value="">Tipo de projeto: todos</option>
+          <option value="Certificado Digital" ${filtrosProjetos.tipoProjeto==='Certificado Digital'?'selected':''}>Certificado Digital</option>
+          <option value="Open Finance" ${filtrosProjetos.tipoProjeto==='Open Finance'?'selected':''}>Open Finance</option>
+          <option value="NF de Saída" ${filtrosProjetos.tipoProjeto==='NF de Saída'?'selected':''}>NF de Saída</option>
+        </select>
+        <select class="filter-select" onchange="filtrosProjetos.status=this.value; renderTable('certificados');">
+          <option value="">Status: todos</option>
+          <option value="Não iniciado" ${filtrosProjetos.status==='Não iniciado'?'selected':''}>Não iniciado</option>
+          <option value="Em andamento" ${filtrosProjetos.status==='Em andamento'?'selected':''}>Em andamento</option>
+          <option value="Concluído" ${filtrosProjetos.status==='Concluído'?'selected':''}>Concluído</option>
+        </select>
+        <select class="filter-select" onchange="filtrosProjetos.prazo=this.value; renderTable('certificados');">
+          <option value="">Prazo: todos</option>
+          <option value="vencido" ${filtrosProjetos.prazo==='vencido'?'selected':''}>Vencido</option>
+          <option value="30dias" ${filtrosProjetos.prazo==='30dias'?'selected':''}>Vencendo em 30 dias</option>
+          <option value="sem" ${filtrosProjetos.prazo==='sem'?'selected':''}>— (sem prazo)</option>
+        </select>
+        ${ativo ? `<button class="btn btn-ghost" onclick="filtrosProjetos={tipoProjeto:'',status:'',prazo:''}; renderTable('certificados');">Limpar</button>` : ''}
+      </div>
+    `;
+  }
+  // Meses entre duas competências no formato "MM/AAAA" já normalizado (b - a, em meses).
+  function mesesEntreCompetencias(a, b){
+    const [ma,aa] = a.split('/').map(Number), [mb,ab] = b.split('/').map(Number);
+    return (ab*12+mb) - (aa*12+ma);
+  }
+  // Cliente muito novo (entrou há menos de 3 meses da competência do lançamento) polui a análise de
+  // rentabilidade — ainda está em onboarding, não é comparável com quem já está rodando normalmente.
+  // Sem dado suficiente (competência de entrada ou do lançamento vazia), não bloqueia — assume elegível.
+  function clienteElegivelRentabilidade(cliente, competenciaRegistro, minimoMeses){
+    minimoMeses = minimoMeses || 3;
+    const entrada = normalizarCompetencia(cliente && cliente.competenciaEntrada);
+    const registro = normalizarCompetencia(competenciaRegistro);
+    if(!entrada || !registro) return true;
+    return mesesEntreCompetencias(entrada, registro) >= minimoMeses;
+  }
+  // Aplica o filtro de período (padrão) + o filtro de Competência específico da Rentabilidade + o filtro
+  // rápido dos mini-cards (ex: "Fora da meta") + a regra de cliente com no mínimo 3 meses de casa — usado
+  // em todo lugar que precisa das linhas de Rentabilidade filtradas (tabela principal, resumo por grupo,
+  // breve histórico, mini-cards), pra não ter um lugar respeitando os filtros e outro ignorando.
+  function linhasRentabilidadeFiltradas(){
+    let rows = filteredRows('rentabilidade');
+    if(filtrosRentabilidade.competencia) rows = rows.filter(r=>normalizarCompetencia(r.competencia)===filtrosRentabilidade.competencia);
+    if(quickFilter.key==='rentabilidade' && quickFilter.predicate) rows = rows.filter(quickFilter.predicate);
+    rows = rows.filter(r=>clienteElegivelRentabilidade(getCliente(r.clienteId), r.competencia));
+    return rows;
+  }
+  function renderFiltrosRentabilidade(){
+    const competencias = [...new Set(DATA.rentabilidade.map(r=>normalizarCompetencia(r.competencia)).filter(Boolean))]
+      .sort((a,b)=>{
+        const [ma,aa] = a.split('/'), [mb,ab] = b.split('/');
+        return (ab+mb).localeCompare(aa+ma);
+      });
+    const ativo = filtrosRentabilidade.competencia;
+    return `
+      <div class="toolbar" style="margin-bottom:14px">
+        <span style="font-size:.78rem;color:var(--gray2)">🔍 Filtrar por:</span>
+        <select class="filter-select" onchange="filtrosRentabilidade.competencia=this.value; renderTable('rentabilidade');">
+          <option value="">Competência: todas</option>
+          ${competencias.map(c=>`<option value="${c}" ${filtrosRentabilidade.competencia===c?'selected':''}>${c}</option>`).join('')}
+        </select>
+        ${ativo ? `<button class="btn btn-ghost" onclick="filtrosRentabilidade.competencia=''; renderTable('rentabilidade');">Limpar</button>` : ''}
+      </div>
+    `;
+  }
   // Demandas concluídas ficam arquivadas (fora da lista principal) por padrão, pra não poluir o controle.
   let mostrarDemandasConcluidas = false;
   function toggleMostrarDemandasConcluidas(){
     mostrarDemandasConcluidas = !mostrarDemandasConcluidas;
     switchView('demandas');
   }
+  // Propostas aceitas ficam arquivadas (fora da lista principal) por padrão — uma vez aceita, o cliente já está migrado pra aba Clientes, e a lista de propostas tende a crescer muito com o tempo.
+  let mostrarComercialAceitas = false;
+  function toggleMostrarComercialAceitas(){
+    mostrarComercialAceitas = !mostrarComercialAceitas;
+    switchView('comercial');
+  }
   let filtroDivisaoComercial = '';
+  // Projeto concluído sai da fila por padrão — a pedido do usuário, mesmo espírito do que já existe em
+  // Demandas/Comercial: já foi resolvido, não precisa continuar poluindo a lista de trabalho.
+  let mostrarProjetosConcluidos = false;
+  function toggleMostrarProjetosConcluidos(){
+    mostrarProjetosConcluidos = !mostrarProjetosConcluidos;
+    switchView('certificados');
+  }
   let sortSegmento = { campo:'qtd', dir:'desc' };
   let sortEstado = { campo:'honorario', dir:'desc' };
   const sortEstadoTabelas = { rnc: { campo:'data', dir:'desc' } }; // ordenação clicável nas tabelas de cada aba — { [secKey]: {campo, dir} }; RNC já entra ordenado por data de lançamento (mais recente primeiro), a pedido do usuário
@@ -4285,7 +4883,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
   }
   function setaOrdenacaoTabela(key, campo){
     const s = sortEstadoTabelas[key];
-    if(!s || s.campo!==campo) return '';
+    if(!s || s.campo!==campo) return ' <span style="opacity:.35;font-size:.85em">⇅</span>';
     return s.dir==='desc' ? ' ▼' : ' ▲';
   }
   // Extrai um valor comparável (número quando possível) de qualquer coluna, pra poder ordenar
@@ -4301,9 +4899,13 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     }
     const fComputed = sec.fields.find(x=>x.key===key && x.type==='computed');
     if(fComputed){
-      const texto = String(fComputed.compute(record)||'').replace(/[^\d,.\-]/g,'').replace(',','.');
-      const num = parseFloat(texto);
-      return isNaN(num) ? String(fComputed.compute(record)||'') : num;
+      const texto = String(fComputed.compute(record)||'');
+      // Usa parseMoneyLike (o mesmo parser de moeda do resto do sistema) em vez de regex solta —
+      // valores formatados em pt-BR acima de mil (ex: "R$ 1.234,56") tinham o separador de milhar
+      // confundido com decimal e o número era cortado (virava 1.23 em vez de 1234.56), quebrando
+      // a ordenação em qualquer coluna calculada com valor de 4 dígitos ou mais.
+      const num = parseMoneyLike(texto);
+      return (num!==0 || /\d/.test(texto)) ? num : texto.toLowerCase();
     }
     if(['indiceCalc','desvio','grupoCliente','cidadeUf','desvioFaturamento','divisaoChip'].includes(key)){
       const texto = fmtVal(sec, key, record, secKey).replace(/<[^>]+>/g,'').trim();
@@ -4376,7 +4978,12 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
   function renderFiltrosClientes(){
     const estados = [...new Set(DATA.clientes.map(c=>c.estado).filter(Boolean))].sort();
     const grupos = [...new Set(DATA.clientes.map(c=>c.grupo).filter(Boolean))].sort();
-    const ativo = filtrosClientes.status||filtrosClientes.regime||filtrosClientes.estado||filtrosClientes.grupo;
+    const anosEntrada = [...new Set(DATA.clientes.map(c=>{
+      const m = String(c.competenciaEntrada||'').trim().match(/(\d{4})$/);
+      return m ? m[1] : null;
+    }).filter(Boolean))].sort((a,b)=>b.localeCompare(a));
+    const ativo = filtrosClientes.status||filtrosClientes.regime||filtrosClientes.estado||filtrosClientes.grupo||filtrosClientes.anoEntrada||filtrosClientes.mesEntrada;
+    const MESES_NOMES = [['01','Jan'],['02','Fev'],['03','Mar'],['04','Abr'],['05','Mai'],['06','Jun'],['07','Jul'],['08','Ago'],['09','Set'],['10','Out'],['11','Nov'],['12','Dez']];
     return `
       <div class="toolbar" style="margin-bottom:14px">
         <span style="font-size:.78rem;color:var(--gray2)">🔍 Filtrar por:</span>
@@ -4398,7 +5005,16 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
           <option value="">Grupo: todos</option>
           ${grupos.map(g=>`<option value="${g}" ${filtrosClientes.grupo===g?'selected':''}>${g}</option>`).join('')}
         </select>
-        ${ativo ? `<button class="btn btn-ghost" onclick="filtrosClientes={status:'',regime:'',estado:'',grupo:''};renderMain();">Limpar filtros</button>` : ''}
+        <select class="filter-select" onchange="filtrosClientes.anoEntrada=this.value; renderTable('clientes');">
+          <option value="">Entrada (ano): todos</option>
+          <option value="__SEM_ENTRADA__" ${filtrosClientes.anoEntrada==='__SEM_ENTRADA__'?'selected':''}>— (sem competência)</option>
+          ${anosEntrada.map(a=>`<option value="${a}" ${filtrosClientes.anoEntrada===a?'selected':''}>${a}</option>`).join('')}
+        </select>
+        <select class="filter-select" onchange="filtrosClientes.mesEntrada=this.value; renderTable('clientes');" ${filtrosClientes.anoEntrada==='__SEM_ENTRADA__'?'disabled':''}>
+          <option value="">Entrada (mês): todos</option>
+          ${MESES_NOMES.map(([v,n])=>`<option value="${v}" ${filtrosClientes.mesEntrada===v?'selected':''}>${n}</option>`).join('')}
+        </select>
+        ${ativo ? `<button class="btn btn-ghost" onclick="filtrosClientes={status:'',regime:'',estado:'',grupo:'',anoEntrada:'',mesEntrada:''};renderMain();">Limpar filtros</button>` : ''}
       </div>
     `;
   }
@@ -4501,9 +5117,13 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
   function filtroAgendaProgramadas(){ filtrosAgenda.status='Programada'; switchView('agenda'); }
   function filtroOnbAndamento(){ const campos=['procuracoes','documentacao','openBank','certificado','configuracaoNFs']; ativarFiltroRapido('onb', r=>campos.some(c=>r[c]!=='Concluído'), 'Em andamento'); }
   function filtroRncGraves(){ ativarFiltroRapido('rnc', r=>r.classificacaoErro==='Grave', 'Graves'); }
-  function filtroCertVencendo(){ ativarFiltroRapido('certificados', r=>{ const d=daysDiff(r.vencimentoCertificado); return d!==null && d>=0 && d<=30; }, 'Vencendo em 30 dias'); }
-  function filtroCertVencidos(){ ativarFiltroRapido('certificados', r=>{ const d=daysDiff(r.vencimentoCertificado); return d!==null && d<0; }, 'Vencidos'); }
-  function filtroOportunidadesAndamento(){ ativarFiltroRapido('oportunidades', r=>r.status==='Identificada'||r.status==='Em andamento', 'Em andamento'); }
+  function filtroCertVencendo(){ ativarFiltroRapido('certificados', r=>{ const d=daysDiff(r.prazo); return d!==null && d>=0 && d<=30; }, 'Prazo vencendo em 30 dias'); }
+  function filtroCertVencidos(){ ativarFiltroRapido('certificados', r=>{ const d=daysDiff(r.prazo); return d!==null && d<0; }, 'Prazo vencido'); }
+  function filtroProjetosStatus(status){ ativarFiltroRapido('certificados', r=>r.status===status, status); }
+  function filtroProjetosNaoIniciados(){ filtroProjetosStatus('Não iniciado'); }
+  function filtroProjetosAndamento(){ filtroProjetosStatus('Em andamento'); }
+  function filtroProjetosConcluidos(){ filtroProjetosStatus('Concluído'); }
+  function filtroOportunidadesAndamento(){ ativarFiltroRapido('oportunidades', r=>r.status==='Identificada'||r.status==='Pendente'||r.status==='Em andamento', 'Em andamento'); }
   function filtroOportunidadesConvertidas(){ ativarFiltroRapido('oportunidades', r=>r.status==='Convertida', 'Convertidas'); }
   function filtroRentabilidadeForaMeta(){ ativarFiltroRapido('rentabilidade', r=>{ const o=parseNum(r.horasOrcadas); const g=parseNum(r.horasGastas); if(o<=0) return false; return Math.abs((g-o)/o*100)>15; }, 'Fora da meta (+15%)'); }
 
@@ -4544,7 +5164,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       case 'oportunidades': {
         const total = rows.length;
         const convertidas = rows.filter(r=>r.status==='Convertida').length;
-        const emAndamento = rows.filter(r=>r.status==='Identificada'||r.status==='Em andamento').length;
+        const emAndamento = rows.filter(r=>r.status==='Identificada'||r.status==='Pendente'||r.status==='Em andamento').length;
         const conversao = total ? Math.round(convertidas/total*100) : 0;
         return miniCardHtml('Taxa de conversão', conversao+'%', `${convertidas} de ${total}`, conversao>=30?'green':'', 'filtroOportunidadesConvertidas')
              + miniCardHtml('Em andamento', emAndamento, 'a trabalhar', '', 'filtroOportunidadesAndamento')
@@ -4555,7 +5175,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         const aceitas = rows.filter(r=>r.statusProposta==='Aceita').length;
         const emAberto = rows.filter(r=>r.statusProposta==='Pendente'||r.statusProposta==='Proposta enviada').length;
         const conversao = total ? Math.round(aceitas/total*100) : 0;
-        const temposConversao = rows.filter(r=>r.dataEnvioProposta && r.dataGanho).map(r=>{
+        const temposConversao = rows.filter(r=>r.dataEnvioProposta && r.dataGanho && r.dataEnvioProposta>='2026-08-01').map(r=>{
           const d1 = new Date(r.dataEnvioProposta+'T00:00:00'), d2 = new Date(r.dataGanho+'T00:00:00');
           return Math.round((d2-d1)/86400000);
         }).filter(d=>d>=0);
@@ -4563,7 +5183,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
         return miniCardHtml('Taxa de conversão', conversao+'%', `${aceitas} de ${total} propostas`, conversao>=50?'green':'red', 'filtroComercialAceitas')
              + miniCardHtml('Em negociação', emAberto, 'aguardando resposta', '', 'filtroComercialNegociacao')
              + miniCardHtml('Recusadas', rows.filter(r=>r.statusProposta==='Recusada').length, 'recontato em 6 meses', '', 'filtroComercialRecusadas')
-             + miniCardHtml('Tempo médio até converter', tempoMedio!==null ? tempoMedio+' dia(s)' : '—', 'da proposta ao aceite');
+             + miniCardHtml('Tempo médio até converter', tempoMedio!==null ? tempoMedio+' dia(s)' : '—', 'só propostas enviadas a partir de 08/2026');
       }
       case 'demandas': {
         const abertas = rows.filter(r=>r.status!=='Finalizado').length;
@@ -4602,11 +5222,16 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
       }
       case 'certificados': {
         const total = rows.length;
-        const vencendo = rows.filter(r=>{ const d=daysDiff(r.vencimentoCertificado); return d!==null && d>=0 && d<=30; }).length;
-        const vencidos = rows.filter(r=>{ const d=daysDiff(r.vencimentoCertificado); return d!==null && d<0; }).length;
-        return miniCardHtml('Vencendo em 30 dias', vencendo, 'renovar certificado', vencendo>0?'red':'green', 'filtroCertVencendo')
-             + miniCardHtml('Vencidos', vencidos, 'ação urgente', vencidos>0?'red':'', 'filtroCertVencidos')
-             + miniCardHtml('Total controlado', total, 'certificados/contas');
+        const naoIniciados = rows.filter(r=>r.status==='Não iniciado').length;
+        const emAndamento = rows.filter(r=>r.status==='Em andamento').length;
+        const concluidos = rows.filter(r=>r.status==='Concluído').length;
+        const vencendo = rows.filter(r=>{ const d=daysDiff(r.prazo); return d!==null && d>=0 && d<=30; }).length;
+        const vencidos = rows.filter(r=>{ const d=daysDiff(r.prazo); return d!==null && d<0; }).length;
+        return miniCardHtml('Não iniciados', naoIniciados, 'ainda não começou', naoIniciados>0?'orange':'green', 'filtroProjetosNaoIniciados')
+             + miniCardHtml('Em andamento', emAndamento, 'em execução', '', 'filtroProjetosAndamento')
+             + miniCardHtml('Concluídos', concluidos, `de ${total} projeto(s)`, concluidos>0?'green':'', 'filtroProjetosConcluidos')
+             + miniCardHtml('Prazo vencendo (30d)', vencendo, 'renovar/atender em breve', vencendo>0?'red':'green', 'filtroCertVencendo')
+             + miniCardHtml('Prazo vencido', vencidos, 'ação urgente', vencidos>0?'red':'', 'filtroCertVencidos');
       }
       case 'parceiros': {
         const total = rows.length;
@@ -4617,6 +5242,7 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
              + miniCardHtml('Indicações somadas', rows.reduce((s,r)=>s+parseNum(r.qtdIndicacoes),0), 'no total');
       }
       case 'rentabilidade': {
+        const rows = linhasRentabilidadeFiltradas();
         const total = rows.length;
         const desvios = rows.map(r=>{ const o=parseNum(r.horasOrcadas); const g=parseNum(r.horasGastas); return o>0 ? (g-o)/o*100 : null; }).filter(d=>d!==null);
         const acimaDe15 = desvios.filter(d=>Math.abs(d)>15).length;
@@ -4639,11 +5265,11 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
 /* ======================================================================
    MODAL GENÉRICO (add/editar)
    ====================================================================== */
-  function openModal(key, id){
+  function openModal(key, id, prefill){
     editingSection = key;
     editingId = id || null;
     const sec = SECTIONS[key];
-    const record = id ? DATA[key].find(r=>r.id===id) : {};
+    const record = id ? DATA[key].find(r=>r.id===id) : (prefill || {});
     document.getElementById('modal-title').textContent = (id ? 'Editar — ' : 'Novo — ') + sec.title;
     document.getElementById('modal-body').innerHTML = renderForm(sec, record||{});
     document.getElementById('modal-generic').classList.add('open');
@@ -4723,6 +5349,19 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     }
   }
 
+  // Sugere Horas orçadas = honorário do cliente ÷ valor da hora (R$ 180) — "quantas horas o honorário
+  // atual compra, ao preço padrão", pra comparar depois com Horas gastas (real, vindo do Domínio).
+  // Só preenche se o campo ainda estiver vazio — não sobrescreve o que já foi editado/importado.
+  function atualizarHorasOrcadasSugeridas(){
+    const horasEl = document.getElementById('fld-horasOrcadas');
+    const clienteEl = document.getElementById('fld-clienteId');
+    if(!horasEl || !clienteEl || horasEl.value) return;
+    const cliente = getCliente(clienteEl.value);
+    if(!cliente) return;
+    const honorario = parseMoneyLike(cliente.honorario);
+    if(honorario>0) horasEl.value = Math.round(honorario/VALOR_HORA*10)/10;
+  }
+
   function renderField(f, val, record){
     val = val===undefined||val===null ? '' : val;
     if(f.type==='currency'){
@@ -4738,8 +5377,9 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     if(f.type==='clientRef'){
       const opts = DATA.clientes.map(c=>`<option value="${c.id}" ${c.id===val?'selected':''}>${c.razaoSocial} — ${c.cnpj||'sem CNPJ'}</option>`).join('');
       const empty = DATA.clientes.length===0 ? `<option value="" disabled>Cadastre um cliente primeiro na aba Clientes</option>` : `<option value="">Selecione o cliente</option>`;
+      const onchangeExtra = f.key==='clienteId' ? ' onchange="atualizarHorasOrcadasSugeridas()"' : '';
       return `<div class="form-group"><label>${f.label}${f.required?' *':''}</label>
-        <select id="fld-${f.key}">${empty}${opts}</select></div>`;
+        <select id="fld-${f.key}"${onchangeExtra}>${empty}${opts}</select></div>`;
     }
     if(f.type==='select'){
       const onchangeExtra = f.key==='regimeTributario' ? ' onchange="atualizarHonorarioCalculado()"' : '';
@@ -4994,7 +5634,6 @@ C405.574,150.776,400.398,142.889,401.575,141.096z"></path>
     };
     DATA.comercial.push(registro);
 
-    // Gera a proposta (PDF/Word) como no fluxo normal do Comercial, quando possível.
     try{ const pdf = gerarPdfProposta(registro); if(pdf) registro.propostaPdf = pdf; }catch(e){}
     if(registro.regimeTributario){
       try{
@@ -5628,7 +6267,7 @@ Equipe Assescont`;
   async function preencherCnaeEmMassa(){
     const faltando = DATA.clientes.filter(c=>c.cnpj && onlyDigits(c.cnpj).length===14 && !c.cnaePrincipal);
     if(faltando.length===0){ alert('Todo mundo com CNPJ válido já tem o CNAE preenchido.'); return; }
-    if(!confirm(`Vou consultar o CNPJ de ${faltando.length} cliente(s) sem CNAE preenchido, um de cada vez — pode levar alguns minutos (${Math.ceil(faltando.length*0.5/60)} min aprox.). Continuar?`)) return;
+    if(!confirm(`Vou consultar o CNPJ de ${faltando.length} cliente(s) sem CNAE preenchido, um de cada vez — pode levar alguns minutos (${Math.ceil(faltando.length*0.5/60)} min aprox.). Isso também preenche a Razão social de quem ainda não tem (ex: clientes lançados só com CNPJ). Continuar?`)) return;
     const btn = document.getElementById('btn-preencher-cnae');
     let sucesso = 0, falha = 0;
     for(let i=0;i<faltando.length;i++){
@@ -5638,6 +6277,7 @@ Equipe Assescont`;
         const data = await buscarDadosCNPJ(onlyDigits(c.cnpj));
         if(data && data.cnae_fiscal){
           c.cnaePrincipal = data.cnae_fiscal + (data.cnae_fiscal_descricao ? ' - '+data.cnae_fiscal_descricao : '');
+          if(!c.razaoSocial && data.razao_social) c.razaoSocial = data.razao_social;
           if(!c.cidade) c.cidade = data.municipio;
           if(!c.estado) c.estado = data.uf;
           if(!c.bairro) c.bairro = data.bairro;
@@ -5658,7 +6298,7 @@ Equipe Assescont`;
     if(currentView==='clientes') renderTable('clientes');
     if(currentView==='dashboard') renderMain();
     refreshMiniCards('clientes');
-    alert(`Concluído: ${sucesso} cliente(s) atualizado(s) com CNAE/endereço. ${falha} não encontrado(s) ou sem CNAE disponível na base da Receita.`);
+    alert(`Concluído: ${sucesso} cliente(s) atualizado(s) com CNAE/endereço/razão social. ${falha} não encontrado(s) ou sem CNAE disponível na base da Receita.`);
   }
 
   // Datas que vêm de Excel/CSV chegam de formas bem diferentes do que o campo de data do navegador aceita
