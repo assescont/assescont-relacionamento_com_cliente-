@@ -185,7 +185,7 @@
   async function loadAcessos(email){
     if(typeof DATA==='undefined' || !Array.isArray(DATA.acessos)) return;
     if(!_vaultKey) return;   // cofre trancado (login sem senha): mantém o que estiver local
-    var res=await _db.from('acessos').select('*').eq('owner', email||'');
+    var res=await _db.from('controle_pessoal').select('*').eq('owner', email||'');
     if(res.error) throw new Error('acessos: '+res.error.message);
     var recs=[];
     for(var i=0;i<(res.data||[]).length;i++){
@@ -206,8 +206,8 @@
       }
     }
     var dels=Object.keys(_snapAce).filter(function(id){ return !vistos[id]; });
-    if(ups.length){ var u=await _db.from('acessos').upsert(ups,{onConflict:'id'}); if(u.error) throw new Error('acessos upsert: '+u.error.message); }
-    if(dels.length){ var d=await _db.from('acessos').delete().in('id',dels); if(d.error) throw new Error('acessos del: '+d.error.message); }
+    if(ups.length){ var u=await _db.from('controle_pessoal').upsert(ups,{onConflict:'id'}); if(u.error) throw new Error('acessos upsert: '+u.error.message); }
+    if(dels.length){ var d=await _db.from('controle_pessoal').delete().in('id',dels); if(d.error) throw new Error('acessos del: '+d.error.message); }
     takeSnapAce();
   }
 
