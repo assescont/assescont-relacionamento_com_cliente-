@@ -18,6 +18,12 @@
   var LOGIN_KEY = 'assescont_login';
   var VAULT_KEY = 'assescont_vault_k';
 
+  /* ===== Webhook do n8n =====
+     Cole aqui a URL do webhook do n8n (nó "Webhook", método POST). A cada alteração
+     salva no banco, o app envia um POST com o que mudou. Deixe '' para desativar.
+     Ex.: 'https://SEU-N8N/webhook/crm-assescont' */
+  var N8N_WEBHOOK_URL = 'https://n8n.srv934741.hstgr.cloud/webhook/relacinamento-com-cliente';
+
   if (!window.supabase || !window.supabase.createClient) {
     console.error('[backend-sync] supabase-js não carregou.'); return;
   }
@@ -190,8 +196,31 @@
     if(Object.keys(changes).length){
       var res=await _db.rpc('crm_save', {p_token:_token, p_changes:changes});
       if(res.error) throw new Error('gravação: '+res.error.message);
+      notifyN8n(changes);   // avisa o n8n do que mudou (fire-and-forget)
     }
     takeSnapshot();
+  }
+
+  /* Envia ao webhook do n8n o que foi alterado. Fire-and-forget: não bloqueia nem
+     quebra a gravação se falhar. NÃO envia o Controle Pessoal (dados pessoais). */
+  function notifyN8n(changes){
+    if(!N8N_WEBHOOK_URL) return;
+    try{
+      var payload={};
+      for(var k in changes){ if(k!=='controle_pessoal') payload[k]=changes[k]; }
+      if(!Object.keys(payload).length) return;
+      fetch(N8N_WEBHOOK_URL, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        keepalive:true,
+        body: JSON.stringify({
+          evento:'crm_alteracao',
+          usuario: (window.crmBackend && window.crmBackend.email) || null,
+          em: new Date().toISOString(),
+          mudancas: payload
+        })
+      }).catch(function(){});
+    }catch(e){}
   }
 
   /* ---------------- Debounce ---------------- */
